@@ -8,7 +8,8 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@arcgis/core": "5.1.0",
+    "@arcgis/core": "^5.1.0",
+    "@arcgis/map-components": "^5.1.0",
     "three": "^0.180.0"
   },
   "devDependencies": {
