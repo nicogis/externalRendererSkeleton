@@ -80,7 +80,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.debugCube.position.z=0;
    this.debugCube.renderOrder=999;
    this.debugCube.frustumCulled=false;
-   this.root.add(this.debugCube);
+   // Keep debug mesh independent of the GLB hierarchy, as in the working blue probe.
+   this.scene3.add(this.debugCube);
    this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
    this.lastTime=performance.now();
    this.lastStatusTime=0;
@@ -188,6 +189,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.root.quaternion.identity();
    this.root.scale.set(1,1,1);
    this.root.updateMatrixWorld(true);
+   this.debugCube.position.copy(this.root.getWorldPosition(new THREE.Vector3()));
+   this.debugCube.updateMatrixWorld(true);
    this.animator?.update(dt,pose.animationScale>0?motion.speed:0);
    this.camera3.projectionMatrix.fromArray(this.camera.projectionMatrix);
    this.camera3.projectionMatrixInverse.copy(this.camera3.projectionMatrix).invert();
@@ -289,6 +292,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     }
     this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
     this.renderer3.render(threeProbe?this.screenScene:this.scene3,threeProbe?this.screenCamera:this.camera3);
+    if(!threeProbe && now-(this.lastDrawReport||0)>1500){
+     this.lastDrawReport=now;
+     console.info("[Skeleton] scene draw calls",this.renderer3.info.render.calls,"cube",this.debugCube.position.toArray());
+    }
     if(threeProbe&&!this.reportedThreeProbe){this.reportedThreeProbe=true;onStatus("Three.js probe active: cyan rectangle should appear in the viewport.");}
    } else if(!this.invalidViewportReported){
     this.invalidViewportReported=true;
