@@ -41,6 +41,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.geoScreenScene.add(this.geoScreenMarker);
    this.scene3=new THREE.Scene();
    this.camera3=new THREE.Camera();
+   // Esri provides the camera world/view matrices directly. Prevent Three.js
+   // from rebuilding matrixWorld from the default zero position each frame.
+   this.camera3.matrixAutoUpdate=false;
+   this.camera3.matrixWorldAutoUpdate=false;
    this.root=new THREE.Group();
    this.scene3.add(this.root);
    this.scene3.add(new THREE.HemisphereLight(0xffffff,0x555577,2));
@@ -173,6 +177,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    const origin=new THREE.Matrix4().makeTranslation(...this.localOrigin);
    this.camera3.matrixWorldInverse.multiplyMatrices(viewMatrix,origin);
    this.camera3.matrixWorld.copy(this.camera3.matrixWorldInverse).invert();
+   // WebGLRenderer calls camera.updateMatrixWorld() before drawing. With
+   // matrixAutoUpdate disabled, our ArcGIS matrices remain authoritative.
    // IMPORTANT: Never call renderer.setSize() on the ArcGIS-owned canvas.
    // Three.js setSize mutates canvas.width/height even with updateStyle=false,
    // potentially zeroing Esri's framebuffer attachments.
