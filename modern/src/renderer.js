@@ -12,6 +12,8 @@ const route=[[998349.7321,5631130.5139],[998650.4915,5631435.5494],[999191.5042,
 export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const path=new MetricPath(route);
  const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
+ // Diagnostic mode: keep ArcGIS RenderNode scheduling, skip all Three.js WebGL calls.
+ const disableThree=new URLSearchParams(window.location.search).has("noThree");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
@@ -53,6 +55,15 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.resetWebGLState();
    const output=this.bindRenderTarget();
    const gl=this.gl;
+   if(disableThree){
+    if(!this.reportedNoThree){this.reportedNoThree=true;onStatus("Diagnostic: Three.js rendering disabled (?noThree).");}
+    const now=performance.now();
+    const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
+    this.lastTime=now;
+    motion.update(dt);
+    if(motion.running)this.requestRender();
+    return output;
+   }
    if(!this.renderer3) {
     this.renderer3=new THREE.WebGLRenderer({canvas:gl.canvas,context:gl,antialias:false});
     this.renderer3.autoClear=false;
