@@ -1,0 +1,28 @@
+name: Static checks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check project JavaScript syntax
+        run: |
+          node --check js/BlendCharacter.js
+          node --check js/BlendCharacterGui.js
+      - name: Check local references
+        run: |
+          test -s index.html
+          test -s models/skinned/marine/marine_anims_core.json
+          test -s js/libs/three.min.js
+          test -s img/Skeleton.png
