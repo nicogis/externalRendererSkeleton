@@ -20,6 +20,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const probe=params.has("probe");
  const threeProbe=params.has("threeProbe");
  const geoProbe=params.has("geoProbe");
+ const worldProbe=params.has("worldProbe");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
@@ -39,6 +40,15 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     new THREE.MeshBasicMaterial({color:0xffff00,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
    );
    this.geoScreenScene.add(this.geoScreenMarker);
+   // A camera-relative mesh tests world geometry with the ArcGIS camera,
+   // without geographical placement or GLB animation.
+   this.worldProbeScene=new THREE.Scene();
+   this.worldProbeMesh=new THREE.Mesh(
+    new THREE.BoxGeometry(24,24,24),
+    new THREE.MeshBasicMaterial({color:0x00ff00,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
+   );
+   this.worldProbeMesh.frustumCulled=false;
+   this.worldProbeScene.add(this.worldProbeMesh);
    this.scene3=new THREE.Scene();
    this.camera3=new THREE.Camera();
    // Esri provides the camera world/view matrices directly. Prevent Three.js
@@ -189,6 +199,26 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.renderer3.resetState();
    this.bindRenderTarget();
    const viewport=gl.getParameter(gl.VIEWPORT);
+   if(worldProbe){
+    // Place the test box in front of the actual ArcGIS camera in render space.
+    // Projection + camera matrix are identical to the normal world scene,
+    // but the entire geographic placement path is bypassed.
+    this.worldProbeMesh.position.set(0,0,-100).applyMatrix4(this.camera3.matrixWorld);
+    this.worldProbeMesh.updateMatrixWorld(true);
+    const projected=this.worldProbeMesh.getWorldPosition(new THREE.Vector3()).project(this.camera3);
+    this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+    const before=this.renderer3.info.render.calls;
+    this.renderer3.render(this.worldProbeScene,this.camera3);
+    const draws=this.renderer3.info.render.calls;
+    if(!this.reportedWorldProbe||now-(this.worldProbeStatusTime||0)>1200){
+     this.reportedWorldProbe=true;
+     this.worldProbeStatusTime=now;
+     onStatus("World probe: green cube in front of camera. NDC "+projected.toArray().map(x=>x.toFixed(3)).join(", ")+"; draw calls "+draws);
+     console.info("[Skeleton] worldProbe NDC",projected.toArray(),"draws",draws,"before",before);
+    }
+    this.resetWebGLState();
+    return output;
+   }
    if(geoProbe){
     // Project the SAME local-world point through the proposed ArcGIS/Three camera
     // and visualize the NDC position in screen space. Does not use world geometry.
@@ -250,6 +280,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
   destroy() {
    this.disposed=true;
    this.animator?.dispose();
+   this.worldProbeMesh?.geometry.dispose();
+   this.worldProbeMesh?.material.dispose();
    this.debugCube?.geometry.dispose();
    this.debugCube?.material.dispose();
    this.marker?.geometry.dispose();
