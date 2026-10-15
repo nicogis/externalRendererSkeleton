@@ -48,7 +48,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    const output=this.bindRenderTarget();
    const gl=this.gl;
    if(!this.renderer3) {
-    this.renderer3=new THREE.WebGLRenderer({canvas:gl.canvas,context:gl});
+    this.renderer3=new THREE.WebGLRenderer({canvas:gl.canvas,context:gl,antialias:false});
     this.renderer3.autoClear=false;
     const original=this.renderer3.setRenderTarget.bind(this.renderer3);
     this.renderer3.setRenderTarget=(target,...args)=>{
@@ -86,11 +86,19 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    const origin=new THREE.Matrix4().makeTranslation(...this.localOrigin);
    this.camera3.matrixWorldInverse.multiplyMatrices(viewMatrix,origin);
    this.camera3.matrixWorld.copy(this.camera3.matrixWorldInverse).invert();
-   const viewport=gl.getParameter(gl.VIEWPORT);
-   this.renderer3.setSize(viewport[2],viewport[3],false);
+   // IMPORTANT: Never call renderer.setSize() on the ArcGIS-owned canvas.
+   // Three.js setSize mutates canvas.width/height even with updateStyle=false,
+   // potentially zeroing Esri's framebuffer attachments.
    this.renderer3.resetState();
    this.bindRenderTarget();
-   this.renderer3.render(this.scene3,this.camera3);
+   const viewport=gl.getParameter(gl.VIEWPORT);
+   if(viewport[2]>0 && viewport[3]>0){
+    this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+    this.renderer3.render(this.scene3,this.camera3);
+   } else if(!this.invalidViewportReported){
+    this.invalidViewportReported=true;
+    onStatus("Rendering paused: ArcGIS output viewport is zero-sized.");
+   }
    this.resetWebGLState();
    if(motion.running)this.requestRender();
    return output;
