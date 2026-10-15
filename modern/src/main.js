@@ -10,7 +10,7 @@ try {
  await element.viewOnReady();
  const view=element.view;
  element.camera={position:{longitude:9,latitude:45,z:3500},heading:0,tilt:55};
- const app=createSkeletonNode(view,{onStatus:message=>status.textContent=message});
+ const app=createSkeletonNode(view,{modelUrl:"/models/Soldier.glb",onStatus:message=>status.textContent=message});
  document.querySelector("#start").addEventListener("click",()=>app.start());
  document.querySelector("#pause").addEventListener("click",()=>app.pause());
  document.querySelector("#reset").addEventListener("click",()=>app.reset());
