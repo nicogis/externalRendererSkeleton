@@ -1,4 +1,5 @@
 import RenderNode from "@arcgis/core/views/3d/webgl/RenderNode.js";
+import Point from "@arcgis/core/geometry/Point.js";
 import * as webgl from "@arcgis/core/views/3d/webgl.js";
 import * as THREE from "three";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
@@ -12,6 +13,7 @@ const route=[[998349.7321,5631130.5139],[998650.4915,5631435.5494],[999191.5042,
 export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const path=new MetricPath(route);
  const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
+ let groundElevation=null;
  // Diagnostic mode: keep ArcGIS RenderNode scheduling, skip all Three.js WebGL calls.
  const params=new URLSearchParams(window.location.search);
  const disableThree=params.has("noThree");
@@ -54,13 +56,27 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     new THREE.BoxGeometry(18,18,18),
     new THREE.MeshBasicMaterial({color:0xff00ff,depthTest:false,depthWrite:false})
    );
-   this.debugCube.position.z=19;
+   this.debugCube.position.z=0;
    this.debugCube.renderOrder=999;
    this.root.add(this.debugCube);
    this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
    this.lastTime=performance.now();
    this.lastStatusTime=0;
    this.animator=null;
+   // Both marker and box must be compared ABOVE terrain, not at z=0.
+   view.map.ground.queryElevation(new Point({
+    x:route[0][0],y:route[0][1],z:0,spatialReference:SR
+   }),{demResolution:"auto"}).then(result=>{
+    const z=result.geometry.z;
+    if(!Number.isFinite(z))throw Error("DEM returned invalid elevation");
+    groundElevation=z;
+    console.info("[Skeleton] DEM elevation at route origin (m):",z);
+    onStatus("Terrain elevation "+z.toFixed(1)+" m; diagnostic cube 35 m above terrain.");
+    this.requestRender();
+   }).catch(error=>{
+    console.error("[Skeleton] terrain elevation query failed",error);
+    onStatus("Terrain elevation unavailable: "+error.message);
+   });
    if(modelUrl)this.loadCharacter(modelUrl,onStatus);
    onStatus("RenderNode initialized: diagnostic capsule, not yet animated marine.");
   },
@@ -133,9 +149,15 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     this.completionReported=true;
     onStatus("Route completed. Press Reset to start again.");
    }
-   const renderPosition=webgl.toRenderCoordinates(view,pose.position,0,SR,new Float64Array(3),0,1);
+   if(groundElevation===null){
+    this.resetWebGLState();
+    if(motion.running)this.requestRender();
+    return output;
+   }
+   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+35];
+   const renderPosition=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
    this.root.position.set(renderPosition[0]-this.localOrigin[0],renderPosition[1]-this.localOrigin[1],renderPosition[2]-this.localOrigin[2]);
-   const matrix=webgl.renderCoordinateTransformAt(view,pose.position,SR,new Float64Array(16));
+   const matrix=webgl.renderCoordinateTransformAt(view,raisedPosition,SR,new Float64Array(16));
    const east=new THREE.Vector3(matrix[0],matrix[1],matrix[2]).normalize();
    const north=new THREE.Vector3(matrix[4],matrix[5],matrix[6]).normalize();
    const up=new THREE.Vector3(matrix[8],matrix[9],matrix[10]).normalize();
