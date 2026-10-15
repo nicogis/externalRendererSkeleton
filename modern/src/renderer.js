@@ -16,10 +16,20 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const params=new URLSearchParams(window.location.search);
  const disableThree=params.has("noThree");
  const probe=params.has("probe");
+ const threeProbe=params.has("threeProbe");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
   initialize() {
+   this.screenScene=new THREE.Scene();
+   this.screenCamera=new THREE.Camera();
+   this.screenCamera.projectionMatrix.identity();
+   this.screenCamera.matrixWorld.identity();
+   this.screenCamera.matrixWorldInverse.identity();
+   this.screenScene.add(new THREE.Mesh(
+    new THREE.PlaneGeometry(0.55,0.55),
+    new THREE.MeshBasicMaterial({color:0x00ffff,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
+   ));
    this.scene3=new THREE.Scene();
    this.camera3=new THREE.Camera();
    this.root=new THREE.Group();
@@ -146,7 +156,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    }
    if(viewport[2]>0 && viewport[3]>0){
     this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
-    this.renderer3.render(this.scene3,this.camera3);
+    this.renderer3.render(threeProbe?this.screenScene:this.scene3,threeProbe?this.screenCamera:this.camera3);
+    if(threeProbe&&!this.reportedThreeProbe){this.reportedThreeProbe=true;onStatus("Three.js probe active: cyan rectangle should appear in the viewport.");}
    } else if(!this.invalidViewportReported){
     this.invalidViewportReported=true;
     onStatus("Rendering paused: ArcGIS output viewport is zero-sized.");
