@@ -22,6 +22,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const geoProbe=params.has("geoProbe");
  const worldProbe=params.has("worldProbe");
  const placementProbe=params.has("placementProbe");
+ const cubeOnly=params.has("cubeOnly");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
@@ -100,7 +101,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     console.error("[Skeleton] terrain elevation query failed",error);
     onStatus("Terrain elevation unavailable: "+error.message);
    });
-   if(modelUrl)this.loadCharacter(modelUrl,onStatus);
+   if(modelUrl && !cubeOnly)this.loadCharacter(modelUrl,onStatus);
+   if(cubeOnly)onStatus("Cube-only mode: Soldier is not loaded.");
    onStatus("RenderNode initialized: diagnostic capsule, not yet animated marine.");
   },
   async loadCharacter(url,report) {
@@ -203,6 +205,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    // IMPORTANT: Never call renderer.setSize() on the ArcGIS-owned canvas.
    // Three.js setSize mutates canvas.width/height even with updateStyle=false,
    // potentially zeroing Esri's framebuffer attachments.
+   // Three.js has its own VAO and buffer state caches; synchronize before draw.
    this.renderer3.resetState();
    this.bindRenderTarget();
    const viewport=gl.getParameter(gl.VIEWPORT);
