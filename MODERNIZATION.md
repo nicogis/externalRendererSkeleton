@@ -3,7 +3,8 @@
 This branch is an independent modernization effort. The original 2016/2017 demo remains on master.
 
 ## Goals
-- Replace ArcGIS 4.1 Dojo/AMD loading with ArcGIS Maps SDK for JavaScript 5.1 ESM APIs and current scene integration.
+- Replace ArcGIS 4.1 Dojo/AMD loading with ArcGIS Maps SDK for JavaScript 5.1 ESM APIs.
+- Evaluate and implement the ArcGIS 5.1 **RenderNode** extension point instead of porting the old `externalRenderers` adapter. Verify the exact 5.1 RenderNode API, render target ownership, depth compositing, WebGL state restoration, and lifecycle against official documentation before coding.
 - Replace legacy Three.js skinning/BlendCharacter code with modern AnimationMixer and a verified compatible Three.js version.
 - Convert the original animated marine assets to glTF/GLB only after verifying that animation clips and skeleton bind poses survive conversion.
 - Eliminate hard-coded 90/10/315-degree world rotations.
@@ -27,7 +28,7 @@ This branch is an independent modernization effort. The original 2016/2017 demo 
 - Handle asynchronous model loading, rendering lifecycle, and cleanup explicitly.
 
 ## Delivery plan
-1. Establish a Vite-based 5.1 scene with a minimal renderer and reproducible build.
+1. Establish a Vite-based 5.1 scene with a minimal custom RenderNode and reproducible build; validate ArcGIS/Three.js WebGL context interoperability before adding the character.
 2. Migrate and inspect the marine model, skeleton, clip names, forward axis and asset permissions.
 3. Implement geographic path sampling, orientation and time-based motion as testable modules.
 4. Integrate AnimationMixer, gait calibration and controls.
