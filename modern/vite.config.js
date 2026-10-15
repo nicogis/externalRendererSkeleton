@@ -5,6 +5,7 @@ import {resolve} from "node:path";
 const soldier=resolve(import.meta.dirname,"../models/Soldier.glb");
 const url="/models/Soldier.glb";
 export default defineConfig({
+ base:"./",
  plugins:[{
   name:"soldier-model-from-repository",
   configureServer(server){
