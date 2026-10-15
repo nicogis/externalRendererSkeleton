@@ -17,6 +17,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const disableThree=params.has("noThree");
  const probe=params.has("probe");
  const threeProbe=params.has("threeProbe");
+ const geoProbe=params.has("geoProbe");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
@@ -30,6 +31,12 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     new THREE.PlaneGeometry(0.55,0.55),
     new THREE.MeshBasicMaterial({color:0x00ffff,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
    ));
+   this.geoScreenScene=new THREE.Scene();
+   this.geoScreenMarker=new THREE.Mesh(
+    new THREE.PlaneGeometry(0.055,0.055),
+    new THREE.MeshBasicMaterial({color:0xffff00,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
+   );
+   this.geoScreenScene.add(this.geoScreenMarker);
    this.scene3=new THREE.Scene();
    this.camera3=new THREE.Camera();
    this.root=new THREE.Group();
@@ -150,6 +157,26 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.renderer3.resetState();
    this.bindRenderTarget();
    const viewport=gl.getParameter(gl.VIEWPORT);
+   if(geoProbe){
+    // Project the SAME local-world point through the proposed ArcGIS/Three camera
+    // and visualize the NDC position in screen space. Does not use world geometry.
+    const worldPoint=this.debugCube.getWorldPosition(new THREE.Vector3());
+    const projected=worldPoint.clone().project(this.camera3);
+    if(!this.loggedGeoProjection){
+     this.loggedGeoProjection=true;
+     console.info("[Skeleton] geoProbe projected NDC:",projected.toArray(),
+      "local world point:",worldPoint.toArray(),
+      "camera view:",this.camera.viewMatrix,
+      "projection:",this.camera.projectionMatrix);
+    }
+    if(projected.toArray().every(Number.isFinite)){
+     this.geoScreenMarker.position.set(projected.x,projected.y,0);
+     this.renderer3.render(this.geoScreenScene,this.screenCamera);
+     onStatus("Geo probe: yellow mark = model position projected with ArcGIS camera. NDC "+projected.toArray().map(v=>v.toFixed(2)).join(", "));
+    } else onStatus("Geo probe: camera projection produced non-finite values.");
+    this.resetWebGLState();
+    return output;
+   }
    if(!this.loggedViewport){
     this.loggedViewport=true;
     console.info("[Skeleton] viewport",Array.from(viewport),"canvas",gl.canvas.width,gl.canvas.height,"camera",this.camera);
