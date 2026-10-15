@@ -62,6 +62,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    );
    this.debugCube.position.z=0;
    this.debugCube.renderOrder=999;
+   this.debugCube.frustumCulled=false;
    this.root.add(this.debugCube);
    this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
    this.lastTime=performance.now();
@@ -210,6 +211,17 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     console.info("[Skeleton] viewport",Array.from(viewport),"canvas",gl.canvas.width,gl.canvas.height,"camera",this.camera);
    }
    if(viewport[2]>0 && viewport[3]>0){
+    if(!this.reported3DGeometry){
+     this.reported3DGeometry=true;
+     this.root.updateMatrixWorld(true);
+     const center=this.debugCube.getWorldPosition(new THREE.Vector3());
+     const ndc=center.clone().project(this.camera3);
+     const clipMatrix=new THREE.Matrix4().multiplyMatrices(this.camera3.projectionMatrix,this.camera3.matrixWorldInverse);
+     console.info("[Skeleton] world cube center",center.toArray(),"NDC",ndc.toArray(),
+       "root scale",this.root.scale.toArray(),"camera determinant",clipMatrix.determinant(),
+       "frustumCulled",this.debugCube.frustumCulled);
+     onStatus("3D debug cube NDC: "+ndc.toArray().map(n=>n.toFixed(3)).join(", "));
+    }
     this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
     this.renderer3.render(threeProbe?this.screenScene:this.scene3,threeProbe?this.screenCamera:this.camera3);
     if(threeProbe&&!this.reportedThreeProbe){this.reportedThreeProbe=true;onStatus("Three.js probe active: cyan rectangle should appear in the viewport.");}
