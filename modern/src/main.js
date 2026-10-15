@@ -2,6 +2,8 @@ import "@arcgis/core/assets/esri/themes/light/main.css";
 import "@arcgis/map-components/components/arcgis-scene";
 import "@arcgis/map-components/components/arcgis-zoom";
 import {createSkeletonNode} from "./renderer.js";
+import GraphicsLayer from "@arcgis/core/layers/GraphicsLayer.js";
+import Graphic from "@arcgis/core/Graphic.js";
 import "./style.css";
 
 const element=document.querySelector("arcgis-scene");
@@ -10,8 +12,27 @@ try {
  await element.viewOnReady();
  const view=element.view;
  element.camera={position:{x:998349.7321,y:5631040.5139,z:90,spatialReference:{wkid:3857}},heading:0,tilt:75};
- // Avoid adding a 2D marker overlay to SceneView while diagnosing rendering.
- // This marker triggered an OverlayManager exception in the browser.
+ // ArcGIS-native volumetric marker: independent of Three.js and RenderNode.
+ // Visible in noNode and noThree modes as an unambiguous geospatial reference.
+ const markers=new GraphicsLayer({
+  title:"Debug: route start (orange sphere)",
+  elevationInfo:{mode:"relative-to-ground"}
+ });
+ markers.add(new Graphic({
+  geometry:{type:"point",x:998349.7321,y:5631130.5139,z:35,spatialReference:{wkid:3857}},
+  symbol:{
+   type:"point-3d",
+   symbolLayers:[{
+    type:"object",
+    resource:{primitive:"sphere"},
+    width:36,height:36,depth:36,
+    material:{color:[255,80,0,1]}
+   }]
+  },
+  attributes:{Name:"Route start / ArcGIS reference"}
+ }));
+ view.map.add(markers);
+ console.info("[Skeleton] Orange ArcGIS sphere added at WebMercator route origin");
  await view.goTo({target:{type:"point",x:998349.7321,y:5631130.5139,z:0,spatialReference:{wkid:3857}},scale:2500,tilt:65},{animate:false});
  if(new URLSearchParams(window.location.search).has("noNode")){
   status.textContent="Diagnostic: ArcGIS SceneView only; RenderNode and Three.js disabled.";
