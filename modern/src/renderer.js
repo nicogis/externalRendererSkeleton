@@ -29,6 +29,15 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.marker=new THREE.Mesh(new THREE.CapsuleGeometry(0.5,1.5,8,12),new THREE.MeshNormalMaterial());
    this.marker.position.z=1.25;
    this.root.add(this.marker);
+   // Independent of glTF loading: if this pink box is invisible while the orange
+   // ArcGIS sphere is visible, investigate WebGL target and camera matrices.
+   this.debugCube=new THREE.Mesh(
+    new THREE.BoxGeometry(18,18,18),
+    new THREE.MeshBasicMaterial({color:0xff00ff,depthTest:false,depthWrite:false})
+   );
+   this.debugCube.position.z=19;
+   this.debugCube.renderOrder=999;
+   this.root.add(this.debugCube);
    this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
    this.lastTime=performance.now();
    this.lastStatusTime=0;
@@ -127,6 +136,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
   destroy() {
    this.disposed=true;
    this.animator?.dispose();
+   this.debugCube?.geometry.dispose();
+   this.debugCube?.material.dispose();
    this.marker?.geometry.dispose();
    this.marker?.material.dispose();
    this.renderer3?.dispose();
