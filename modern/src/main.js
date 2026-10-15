@@ -9,7 +9,7 @@ const status=document.querySelector("#status");
 try {
  await element.viewOnReady();
  const view=element.view;
- element.camera={position:{longitude:9,latitude:45,z:3500},heading:0,tilt:55};
+ element.camera={position:{x:998349.7321,y:5631040.5139,z:90,spatialReference:{wkid:3857}},heading:0,tilt:75};
  const app=createSkeletonNode(view,{modelUrl:new URL("models/Soldier.glb",document.baseURI).href,onStatus:message=>status.textContent=message});
  document.querySelector("#start").addEventListener("click",()=>app.start());
  document.querySelector("#pause").addEventListener("click",()=>app.pause());
