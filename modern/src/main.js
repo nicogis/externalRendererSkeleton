@@ -42,6 +42,7 @@ try {
  document.querySelector("#start").addEventListener("click",()=>app.start());
  document.querySelector("#pause").addEventListener("click",()=>app.pause());
  document.querySelector("#reset").addEventListener("click",()=>app.reset());
+ document.querySelector("#focus").addEventListener("click",()=>app.focus().catch(error=>{status.textContent="Focus failed: "+error.message;console.error(error);}));
  document.querySelector("#speed").addEventListener("input",event=>{
   app.setSpeed(Number(event.target.value));
   document.querySelector("#speedValue").textContent=event.target.value;
