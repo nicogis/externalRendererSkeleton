@@ -61,8 +61,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.camera3.matrixAutoUpdate=false;
    this.camera3.matrixWorldAutoUpdate=false;
    this.root=new THREE.Group();
-   // Geographic world matrices are supplied by ArcGIS, not reconstructed from Euler angles.
-   this.root.matrixAutoUpdate=false;
+   // Use ordinary Three.js translation for the geographic anchor.
+   // The previous raw ArcGIS ENU matrix made the debug cube disappear.
    this.scene3.add(this.root);
    this.scene3.add(new THREE.HemisphereLight(0xffffff,0x555577,2));
    const lamp=new THREE.DirectionalLight(0xffffff,2);
@@ -75,7 +75,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    // ArcGIS sphere is visible, investigate WebGL target and camera matrices.
    this.debugCube=new THREE.Mesh(
     new THREE.BoxGeometry(18,18,18),
-    new THREE.MeshBasicMaterial({color:0xff00ff,depthTest:false,depthWrite:false})
+    new THREE.MeshBasicMaterial({color:0xff00ff,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
    );
    this.debugCube.position.z=0;
    this.debugCube.renderOrder=999;
@@ -177,17 +177,16 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     return output;
    }
    const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+35];
-   // Derive both translation and ENU basis from one ArcGIS transform.
-   // Avoid constructing a second, potentially inconsistent local tangent frame.
-   const placement=webgl.renderCoordinateTransformAt(view,raisedPosition,SR,new Float64Array(16));
-   if(!placement){onStatus("ArcGIS placement transform unavailable");return output;}
-   placement[12]-=this.localOrigin[0];
-   placement[13]-=this.localOrigin[1];
-   placement[14]-=this.localOrigin[2];
-   // ArcGIS axes at the origin: +X east, +Y north, +Z up.
-   // Keep the direct matrix while debugging; orientation corrections come later.
-   this.root.matrix.fromArray(placement);
-   this.root.matrixWorldNeedsUpdate=true;
+   // The direct-position blue probe rendered at this same geographic anchor.
+   // Apply ONLY translation to the root, avoiding the suspect ENU basis matrix.
+   const anchor=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
+   this.root.position.set(
+    anchor[0]-this.localOrigin[0],
+    anchor[1]-this.localOrigin[1],
+    anchor[2]-this.localOrigin[2]
+   );
+   this.root.quaternion.identity();
+   this.root.scale.set(1,1,1);
    this.root.updateMatrixWorld(true);
    this.animator?.update(dt,pose.animationScale>0?motion.speed:0);
    this.camera3.projectionMatrix.fromArray(this.camera.projectionMatrix);
