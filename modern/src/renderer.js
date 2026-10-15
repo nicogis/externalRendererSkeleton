@@ -46,6 +46,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.camera3.matrixAutoUpdate=false;
    this.camera3.matrixWorldAutoUpdate=false;
    this.root=new THREE.Group();
+   // Geographic world matrices are supplied by ArcGIS, not reconstructed from Euler angles.
+   this.root.matrixAutoUpdate=false;
    this.scene3.add(this.root);
    this.scene3.add(new THREE.HemisphereLight(0xffffff,0x555577,2));
    const lamp=new THREE.DirectionalLight(0xffffff,2);
@@ -160,17 +162,18 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     return output;
    }
    const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+35];
-   const renderPosition=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
-   this.root.position.set(renderPosition[0]-this.localOrigin[0],renderPosition[1]-this.localOrigin[1],renderPosition[2]-this.localOrigin[2]);
-   const matrix=webgl.renderCoordinateTransformAt(view,raisedPosition,SR,new Float64Array(16));
-   const east=new THREE.Vector3(matrix[0],matrix[1],matrix[2]).normalize();
-   const north=new THREE.Vector3(matrix[4],matrix[5],matrix[6]).normalize();
-   const up=new THREE.Vector3(matrix[8],matrix[9],matrix[10]).normalize();
-   const forward=new THREE.Vector3().addScaledVector(east,pose.tangent[0]).addScaledVector(north,pose.tangent[1]).normalize();
-   const right=new THREE.Vector3().crossVectors(forward,up).normalize();
-   forward.crossVectors(up,right).normalize();
-   const basis=new THREE.Matrix4().makeBasis(right,forward,up);
-   this.root.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(basis),Math.min(1,dt*8));
+   // Derive both translation and ENU basis from one ArcGIS transform.
+   // Avoid constructing a second, potentially inconsistent local tangent frame.
+   const placement=webgl.renderCoordinateTransformAt(view,raisedPosition,SR,new Float64Array(16));
+   if(!placement){onStatus("ArcGIS placement transform unavailable");return output;}
+   placement[12]-=this.localOrigin[0];
+   placement[13]-=this.localOrigin[1];
+   placement[14]-=this.localOrigin[2];
+   // ArcGIS axes at the origin: +X east, +Y north, +Z up.
+   // Keep the direct matrix while debugging; orientation corrections come later.
+   this.root.matrix.fromArray(placement);
+   this.root.matrixWorldNeedsUpdate=true;
+   this.root.updateMatrixWorld(true);
    this.animator?.update(dt,pose.animationScale>0?motion.speed:0);
    this.camera3.projectionMatrix.fromArray(this.camera.projectionMatrix);
    this.camera3.projectionMatrixInverse.copy(this.camera3.projectionMatrix).invert();
