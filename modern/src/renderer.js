@@ -52,18 +52,18 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    }
   },
   render() {
-   this.resetWebGLState();
-   const output=this.bindRenderTarget();
-   const gl=this.gl;
    if(disableThree){
-    if(!this.reportedNoThree){this.reportedNoThree=true;onStatus("Diagnostic: Three.js rendering disabled (?noThree).");}
+    if(!this.reportedNoThree){this.reportedNoThree=true;onStatus("Diagnostic: RenderNode active, no WebGL operations (?noThree).");}
     const now=performance.now();
     const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
     this.lastTime=now;
     motion.update(dt);
     if(motion.running)this.requestRender();
-    return output;
+    return;
    }
+   this.resetWebGLState();
+   const output=this.bindRenderTarget();
+   const gl=this.gl;
    if(!this.renderer3) {
     this.renderer3=new THREE.WebGLRenderer({canvas:gl.canvas,context:gl,antialias:false});
     this.renderer3.autoClear=false;
