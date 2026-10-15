@@ -94,6 +94,7 @@
             var routeLyr = new GraphicsLayer();
 
             var externalRenderer = null;
+            var demoStarted = false;
 
             // Setup the route parameters
             var routeParams = new RouteParameters({
@@ -148,6 +149,11 @@
             on(view, "click", addStop);
 
             function addStop(event) {
+                // This sample uses a predefined path; repeated clicks must not duplicate it.
+                if (demoStarted) {
+                    return;
+                }
+                demoStarted = true;
 
                 // Add a point at the location of the map click
                 //var stop = new Graphic({
@@ -262,7 +268,7 @@
                         if (target == null) {
                             context.bindRenderTarget();
                         }
-                    }
+                    };
 
                     // setup the three.js scene
                     ///////////////////////////////////////////////////////////////////////////////////////
@@ -323,9 +329,9 @@
 
                         pt.spatialReference = SpatialReference.WebMercator;
 
-                        z = view.basemapTerrain.getElevation(p);
+                        var z = view.basemapTerrain.getElevation(p);
 
-                        pos = [pt.x, pt.y, z];
+                        var pos = [pt.x, pt.y, z];
 
                         this.vertexIdx++;
 
