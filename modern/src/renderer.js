@@ -20,6 +20,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.camera3=new THREE.Camera();
    this.root=new THREE.Group();
    this.scene3.add(this.root);
+   this.scene3.add(new THREE.HemisphereLight(0xffffff,0x555577,2));
+   const lamp=new THREE.DirectionalLight(0xffffff,2);
+   lamp.position.set(25,15,45);
+   this.scene3.add(lamp);
    this.marker=new THREE.Mesh(new THREE.CapsuleGeometry(0.5,1.5,8,12),new THREE.MeshNormalMaterial());
    this.marker.position.z=1.25;
    this.root.add(this.marker);
@@ -36,7 +40,9 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     if(this.disposed)return;
     this.root.remove(this.marker);
     this.root.add(gltf.scene);
-    this.animator=new CharacterAnimator(gltf.scene,gltf.animations);
+    this.animator=new CharacterAnimator(gltf.scene,gltf.animations,{forward:[0,0,1],up:[0,1,0]});
+    const bounds=new THREE.Box3().setFromObject(gltf.scene);
+    console.info("[Skeleton] Soldier bounds:",bounds.min.toArray(),bounds.max.toArray(),"clips:",gltf.animations.map(a=>a.name));
     report("Character loaded. Clips: "+(gltf.animations.map(c=>c.name).join(", ")||"none"));
     this.requestRender();
    } catch(error) {
@@ -92,6 +98,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.renderer3.resetState();
    this.bindRenderTarget();
    const viewport=gl.getParameter(gl.VIEWPORT);
+   if(!this.loggedViewport){
+    this.loggedViewport=true;
+    console.info("[Skeleton] viewport",Array.from(viewport),"canvas",gl.canvas.width,gl.canvas.height,"camera",this.camera);
+   }
    if(viewport[2]>0 && viewport[3]>0){
     this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
     this.renderer3.render(this.scene3,this.camera3);
