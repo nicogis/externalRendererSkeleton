@@ -1,0 +1,99 @@
+import RenderNode from "@arcgis/core/views/3d/webgl/RenderNode.js";
+import * as webgl from "@arcgis/core/views/3d/webgl.js";
+import * as THREE from "three";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+import {CharacterAnimator} from "./character.js";
+import {MetricPath} from "./path.js";
+import {Locomotion} from "./locomotion.js";
+
+const SR={wkid:3857};
+const route=[[998349.7321,5631130.5139],[998650.4915,5631435.5494],[999191.5042,5631790.1626],[999954.0427,5631939.8923],[1000821.2216,5631456.0378],[1001712.8907,5631311.0441],[1002457.6181,5631377.2365],[1002683.5966,5631619.9465],[1003417.1921,5631433.9734]];
+
+export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
+ const path=new MetricPath(route);
+ const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
+ const Node=RenderNode.createSubclass({
+  consumes:{required:["transparent-color"]},
+  produces:"transparent-color",
+  initialize() {
+   this.scene3=new THREE.Scene();
+   this.camera3=new THREE.Camera();
+   this.root=new THREE.Group();
+   this.scene3.add(this.root);
+   this.marker=new THREE.Mesh(new THREE.CapsuleGeometry(0.5,1.5,8,12),new THREE.MeshNormalMaterial());
+   this.marker.position.z=1.25;
+   this.root.add(this.marker);
+   this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
+   this.lastTime=performance.now();
+   this.animator=null;
+   if(modelUrl)this.loadCharacter(modelUrl,onStatus);
+   onStatus("RenderNode initialized: diagnostic capsule, not yet animated marine.");
+  },
+  async loadCharacter(url,report) {
+   try {
+    const gltf=await new GLTFLoader().loadAsync(url);
+    if(this.disposed)return;
+    this.root.remove(this.marker);
+    this.root.add(gltf.scene);
+    this.animator=new CharacterAnimator(gltf.scene,gltf.animations);
+    report("Character loaded. Clips: "+(gltf.animations.map(c=>c.name).join(", ")||"none"));
+    this.requestRender();
+   } catch(error) {
+    report("Character load error: "+error.message);
+   }
+  },
+  render() {
+   this.resetWebGLState();
+   const output=this.bindRenderTarget();
+   const gl=this.gl;
+   if(!this.renderer3) {
+    this.renderer3=new THREE.WebGLRenderer({canvas:gl.canvas,context:gl});
+    this.renderer3.autoClear=false;
+    const original=this.renderer3.setRenderTarget.bind(this.renderer3);
+    this.renderer3.setRenderTarget=(target,...args)=>{
+     original(target,...args);
+     if(target===null)this.bindRenderTarget();
+    };
+   }
+   const now=performance.now();
+   const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
+   this.lastTime=now;
+   const pose=motion.update(dt);
+   const renderPosition=webgl.toRenderCoordinates(view,pose.position,0,SR,new Float64Array(3),0,1);
+   this.root.position.set(renderPosition[0]-this.localOrigin[0],renderPosition[1]-this.localOrigin[1],renderPosition[2]-this.localOrigin[2]);
+   const matrix=webgl.renderCoordinateTransformAt(view,pose.position,SR,new Float64Array(16));
+   const east=new THREE.Vector3(matrix[0],matrix[1],matrix[2]).normalize();
+   const north=new THREE.Vector3(matrix[4],matrix[5],matrix[6]).normalize();
+   const up=new THREE.Vector3(matrix[8],matrix[9],matrix[10]).normalize();
+   const forward=new THREE.Vector3().addScaledVector(east,pose.tangent[0]).addScaledVector(north,pose.tangent[1]).normalize();
+   const right=new THREE.Vector3().crossVectors(forward,up).normalize();
+   forward.crossVectors(up,right).normalize();
+   const basis=new THREE.Matrix4().makeBasis(right,forward,up);
+   this.root.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(basis),Math.min(1,dt*8));
+   this.animator?.update(dt,pose.animationScale>0?motion.speed:0);
+   this.camera3.projectionMatrix.fromArray(this.camera.projectionMatrix);
+   this.camera3.projectionMatrixInverse.copy(this.camera3.projectionMatrix).invert();
+   const viewMatrix=new THREE.Matrix4().fromArray(this.camera.viewMatrix);
+   const origin=new THREE.Matrix4().makeTranslation(...this.localOrigin);
+   this.camera3.matrixWorldInverse.multiplyMatrices(viewMatrix,origin);
+   this.camera3.matrixWorld.copy(this.camera3.matrixWorldInverse).invert();
+   const viewport=gl.getParameter(gl.VIEWPORT);
+   this.renderer3.setSize(viewport[2],viewport[3],false);
+   this.renderer3.resetState();
+   this.bindRenderTarget();
+   this.renderer3.render(this.scene3,this.camera3);
+   this.resetWebGLState();
+   if(motion.running)this.requestRender();
+   return output;
+  },
+  destroy() {
+   this.disposed=true;
+   this.animator?.dispose();
+   this.marker?.geometry.dispose();
+   this.marker?.material.dispose();
+   this.renderer3?.dispose();
+  }
+ });
+ const node=new Node({view});
+ return {node,start(){motion.start();node.lastTime=performance.now();node.requestRender();},pause(){motion.pause();node.requestRender();},reset(){motion.reset();node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();}};
+}
