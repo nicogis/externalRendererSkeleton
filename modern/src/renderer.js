@@ -13,7 +13,9 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const path=new MetricPath(route);
  const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
  // Diagnostic mode: keep ArcGIS RenderNode scheduling, skip all Three.js WebGL calls.
- const disableThree=new URLSearchParams(window.location.search).has("noThree");
+ const params=new URLSearchParams(window.location.search);
+ const disableThree=params.has("noThree");
+ const probe=params.has("probe");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
@@ -73,6 +75,26 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.resetWebGLState();
    const output=this.bindRenderTarget();
    const gl=this.gl;
+   if(probe){
+    // ArcGIS native FBO test: no Three.js and no model/matrix dependency.
+    const vp=this.camera.viewport;
+    if(vp[2]>0 && vp[3]>0){
+     const size=Math.max(32,Math.min(128,Math.floor(Math.min(vp[2],vp[3])/6)));
+     gl.enable(gl.SCISSOR_TEST);
+     gl.scissor(vp[0]+Math.floor((vp[2]-size)/2),vp[1]+Math.floor((vp[3]-size)/2),size,size);
+     gl.clearColor(1,0,1,1);
+     gl.colorMask(true,true,true,true);
+     gl.clear(gl.COLOR_BUFFER_BIT);
+     gl.disable(gl.SCISSOR_TEST);
+    }
+    if(!this.loggedProbe){
+     this.loggedProbe=true;
+     onStatus("FBO probe active: magenta square should appear at screen center.");
+     console.info("[Skeleton] RenderNode direct framebuffer probe",vp);
+    }
+    this.resetWebGLState();
+    return output;
+   }
    if(!this.renderer3) {
     this.renderer3=new THREE.WebGLRenderer({canvas:gl.canvas,context:gl,antialias:false});
     this.renderer3.autoClear=false;
