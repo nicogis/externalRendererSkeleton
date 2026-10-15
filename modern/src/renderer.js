@@ -206,6 +206,17 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     this.resetWebGLState();
     return output;
    }
+   this.root.updateMatrixWorld(true);
+   const center3D=this.debugCube.getWorldPosition(new THREE.Vector3());
+   const ndc3D=center3D.clone().project(this.camera3);
+   if(now-(this.lastGeometryReport||0)>750){
+    this.lastGeometryReport=now;
+    const inside=Number.isFinite(ndc3D.x)&&Number.isFinite(ndc3D.y)&&Number.isFinite(ndc3D.z)
+      &&Math.abs(ndc3D.x)<=1&&Math.abs(ndc3D.y)<=1&&Math.abs(ndc3D.z)<=1;
+    onStatus("Cube NDC "+ndc3D.toArray().map(v=>v.toFixed(3)).join(", ")
+       +" | "+(inside?"IN frustum":"OUT of frustum")
+       +" | "+(groundElevation===null?"DEM pending":"DEM "+groundElevation.toFixed(1)+"m"));
+   }
    if(!this.loggedViewport){
     this.loggedViewport=true;
     console.info("[Skeleton] viewport",Array.from(viewport),"canvas",gl.canvas.width,gl.canvas.height,"camera",this.camera);
@@ -254,7 +265,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    });
    await view.goTo({target:anchor,scale:850,heading:0,tilt:65},{animate:false});
    node.requestRender();
-   onStatus("Focused on cube center (terrain + 35 m).");
+   onStatus("Focus requested; wait for live cube NDC in status.");
   },
   start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();}};
 }
