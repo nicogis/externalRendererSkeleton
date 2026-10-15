@@ -42,7 +42,7 @@ export class CharacterAnimator {
   if(moving) {
    if(!this.select("walk"))this.select("run");
   } else {
-   if(!this.select("idle"))this.active?.paused=true;
+   if(!this.select("idle") && this.active)this.active.paused=true;
   }
   if(this.active && moving) {
    this.active.paused=false;
