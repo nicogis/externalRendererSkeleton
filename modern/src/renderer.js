@@ -25,6 +25,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.root.add(this.marker);
    this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
    this.lastTime=performance.now();
+   this.lastStatusTime=0;
    this.animator=null;
    if(modelUrl)this.loadCharacter(modelUrl,onStatus);
    onStatus("RenderNode initialized: diagnostic capsule, not yet animated marine.");
@@ -59,6 +60,14 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
    this.lastTime=now;
    const pose=motion.update(dt);
+   if(motion.running && now-this.lastStatusTime>500){
+    this.lastStatusTime=now;
+    onStatus(`Walking: ${pose.distance.toFixed(1)} / ${path.totalLength.toFixed(0)} m at ${motion.speed.toFixed(1)} m/s`);
+   }
+   if(pose.finished && !this.completionReported){
+    this.completionReported=true;
+    onStatus("Route completed. Press Reset to start again.");
+   }
    const renderPosition=webgl.toRenderCoordinates(view,pose.position,0,SR,new Float64Array(3),0,1);
    this.root.position.set(renderPosition[0]-this.localOrigin[0],renderPosition[1]-this.localOrigin[1],renderPosition[2]-this.localOrigin[2]);
    const matrix=webgl.renderCoordinateTransformAt(view,pose.position,SR,new Float64Array(16));
@@ -95,5 +104,5 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
   }
  });
  const node=new Node({view});
- return {node,start(){motion.start();node.lastTime=performance.now();node.requestRender();},pause(){motion.pause();node.requestRender();},reset(){motion.reset();node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();}};
+ return {node,start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();}};
 }
