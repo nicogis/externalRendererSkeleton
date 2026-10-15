@@ -13,9 +13,9 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const path=new MetricPath(route);
  const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
  const Node=RenderNode.createSubclass({
+  consumes:{required:["transparent-color"]},
+  produces:"transparent-color",
   initialize() {
-   this.consumes.required.push("opaque-color");
-   this.produces="opaque-color";
    this.scene3=new THREE.Scene();
    this.camera3=new THREE.Camera();
    this.root=new THREE.Group();
@@ -23,7 +23,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.marker=new THREE.Mesh(new THREE.CapsuleGeometry(0.5,1.5,8,12),new THREE.MeshNormalMaterial());
    this.marker.position.z=1.25;
    this.root.add(this.marker);
-   this.localOrigin=webgl.toRenderCoordinates(view,route[0],0,SR,new Float64Array(3),0,1);
+   this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
    this.lastTime=performance.now();
    this.animator=null;
    if(modelUrl)this.loadCharacter(modelUrl,onStatus);
