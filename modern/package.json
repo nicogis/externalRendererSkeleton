@@ -1,0 +1,17 @@
+{
+  "name": "external-renderer-skeleton-modern",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@arcgis/core": "5.1.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}
