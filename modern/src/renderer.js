@@ -21,6 +21,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const threeProbe=params.has("threeProbe");
  const geoProbe=params.has("geoProbe");
  const worldProbe=params.has("worldProbe");
+ const placementProbe=params.has("placementProbe");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
@@ -49,6 +50,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    );
    this.worldProbeMesh.frustumCulled=false;
    this.worldProbeScene.add(this.worldProbeMesh);
+   this.placementProbeMesh=new THREE.Mesh(new THREE.BoxGeometry(18,18,18),new THREE.MeshBasicMaterial({color:0x0066ff,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
+   this.placementProbeMesh.frustumCulled=false;
+   this.placementProbeScene=new THREE.Scene();
+   this.placementProbeScene.add(this.placementProbeMesh);
    this.scene3=new THREE.Scene();
    this.camera3=new THREE.Camera();
    // Esri provides the camera world/view matrices directly. Prevent Three.js
@@ -199,6 +204,23 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.renderer3.resetState();
    this.bindRenderTarget();
    const viewport=gl.getParameter(gl.VIEWPORT);
+   if(placementProbe){
+    // Identical projected point to the fuchsia box; bypass its geographic parent matrix.
+    this.root.updateMatrixWorld(true);
+    this.debugCube.getWorldPosition(this.placementProbeMesh.position);
+    this.placementProbeMesh.updateMatrixWorld(true);
+    this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+    this.renderer3.render(this.placementProbeScene,this.camera3);
+    if(now-(this.lastPlacementProbeStatus||0)>1000){
+     this.lastPlacementProbeStatus=now;
+     const ndc=this.placementProbeMesh.position.clone().project(this.camera3);
+     const position=this.placementProbeMesh.position.toArray();
+     onStatus("Blue placement cube: "+ndc.toArray().map(n=>n.toFixed(3)).join(", ")+" | draw calls "+this.renderer3.info.render.calls);
+     console.info("[Skeleton] placementProbe local pos",position,"NDC",ndc.toArray(),"calls",this.renderer3.info.render.calls);
+    }
+    this.resetWebGLState();
+    return output;
+   }
    if(worldProbe){
     // Place the test box in front of the actual ArcGIS camera in render space.
     // Projection + camera matrix are identical to the normal world scene,
@@ -280,6 +302,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
   destroy() {
    this.disposed=true;
    this.animator?.dispose();
+   this.placementProbeMesh?.geometry.dispose();
+   this.placementProbeMesh?.material.dispose();
    this.worldProbeMesh?.geometry.dispose();
    this.worldProbeMesh?.material.dispose();
    this.debugCube?.geometry.dispose();
