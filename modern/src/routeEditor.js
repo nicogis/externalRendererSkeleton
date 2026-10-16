@@ -49,10 +49,11 @@ export function setupRouteEditor(view,{onRoute,onStatus}){
    await onRoute(elevated);
    layer.removeAll();
    layer.add(new Graphic({
-    geometry:new Polyline({paths:[elevated],spatialReference:sr}),
+    // Visual route is ground-relative; do NOT render absolute DEM heights twice.
+    geometry:new Polyline({paths:[xy],spatialReference:sr}),
     symbol:{type:"line-3d",symbolLayers:[{type:"line",material:{color:[0,180,255]},size:5}]}
    }));
-   onStatus("Route ready: "+elevated.length+" sampled points. Press Focus Soldier or Start.");
+   onStatus("Route ready: "+elevated.length+" terrain samples. Press Focus Soldier or Start.");
   }catch(error){
    console.error("[Skeleton] route drawing failed",error);
    layer.removeAll();
