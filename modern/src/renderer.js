@@ -224,7 +224,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    const rotationBasis=new THREE.Matrix4().makeBasis(right,forward,up);
    const headingCorrection=new THREE.Quaternion().setFromAxisAngle(localZ,THREE.MathUtils.degToRad(headingOffsetDeg));
    const desired=new THREE.Quaternion().setFromRotationMatrix(rotationBasis).multiply(headingCorrection);
-   this.root.quaternion.slerp(desired,Math.min(1,dt*10));
+   if(!motion.running || !this.headingInitialized){
+    this.root.quaternion.copy(desired);
+    this.headingInitialized=true;
+   }else this.root.quaternion.slerp(desired,Math.min(1,dt*10));
    this.root.scale.set(1,1,1);
    this.root.updateMatrixWorld(true);
    this.debugCube.position.copy(this.root.getWorldPosition(new THREE.Vector3()));
