@@ -2,6 +2,7 @@ import "@arcgis/core/assets/esri/themes/light/main.css";
 import "@arcgis/map-components/components/arcgis-scene";
 import "@arcgis/map-components/components/arcgis-zoom";
 import {createSkeletonNode} from "./renderer.js";
+import {setupRouteEditor} from "./routeEditor.js";
 import GraphicsLayer from "@arcgis/core/layers/GraphicsLayer.js";
 import Graphic from "@arcgis/core/Graphic.js";
 import "./style.css";
@@ -41,6 +42,12 @@ try {
   console.info("[Skeleton] noNode mode: no custom renderer created");
  } else {
   const app=createSkeletonNode(view,{modelUrl:new URL("models/Soldier.glb",document.baseURI).href,onStatus:message=>status.textContent=message});
+ const routeEditor=setupRouteEditor(view,{
+  onRoute:points=>app.setRoute(points),
+  onStatus:message=>status.textContent=message
+ });
+ document.querySelector("#drawRoute").addEventListener("click",()=>routeEditor.draw());
+ document.querySelector("#clearRoute").addEventListener("click",()=>{routeEditor.clear();app.resetRoute();});
  document.querySelector("#start").addEventListener("click",()=>app.start());
  document.querySelector("#pause").addEventListener("click",()=>app.pause());
  document.querySelector("#reset").addEventListener("click",()=>app.reset());
@@ -57,7 +64,7 @@ try {
   app.setSpeed(Number(event.target.value));
   document.querySelector("#speedValue").textContent=event.target.value;
  });
- window.addEventListener("pagehide",()=>app.node.destroy(),{once:true});
+ window.addEventListener("pagehide",()=>{routeEditor.destroy();app.node.destroy();},{once:true});
  }
 } catch(error) {
  status.textContent="Initialization failed: "+error.message;
