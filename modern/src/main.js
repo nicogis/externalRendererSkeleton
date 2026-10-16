@@ -3,8 +3,7 @@ import "@arcgis/map-components/components/arcgis-scene";
 import "@arcgis/map-components/components/arcgis-zoom";
 import {createSkeletonNode} from "./renderer.js";
 import {setupRouteEditor} from "./routeEditor.js";
-import GraphicsLayer from "@arcgis/core/layers/GraphicsLayer.js";
-import Graphic from "@arcgis/core/Graphic.js";
+import {activityMetrics,formatDuration,formatPace} from "./activity.js";
 import "./style.css";
 
 const element=document.querySelector("arcgis-scene");
@@ -18,15 +17,34 @@ try {
   status.textContent="Diagnostic: ArcGIS SceneView only; RenderNode and Three.js disabled.";
   console.info("[Skeleton] noNode mode: no custom renderer created");
  } else {
-  const app=createSkeletonNode(view,{modelUrl:new URL("models/Soldier.glb",document.baseURI).href,onStatus:message=>status.textContent=message});
+  let latestActivity=activityMetrics({});
+  let weight=75;
+  const field=(id,value)=>document.getElementById(id).textContent=value;
+  function updateMonitor(metrics){
+   latestActivity=metrics;
+   field("metricDistance",metrics.distance>=1000?(metrics.distance/1000).toFixed(2)+" km":metrics.distance.toFixed(0)+" m");
+   field("metricTime",formatDuration(metrics.elapsed));
+   field("metricSpeed",(metrics.speed*3.6).toFixed(1)+" km/h");
+   field("metricPace",formatPace(metrics.paceSeconds)+" min/km");
+   field("metricAscent",metrics.ascent.toFixed(1)+" m");
+   field("metricDescent",metrics.descent.toFixed(1)+" m");
+   field("metricCalories",(metrics.kcal*weight/75).toFixed(1)+" kcal");
+   document.getElementById("metricProgress").style.width=(metrics.progress*100).toFixed(1)+"%";
+   routeEditor?.updateProgress(metrics.distance);
+  }
+  let routeEditor=null;
+  const app=createSkeletonNode(view,{modelUrl:new URL("models/Soldier.glb",document.baseURI).href,onStatus:message=>status.textContent=message,onActivity:updateMonitor});
  const requiresRoute=["start","pause","reset","focus"];
  const setRouteControls=enabled=>requiresRoute.forEach(id=>{document.getElementById(id).disabled=!enabled;});
  setRouteControls(false);
  status.textContent="No route selected. Click Draw route, trace the road and double-click to finish.";
- const routeEditor=setupRouteEditor(view,{
+ routeEditor=setupRouteEditor(view,{
   onRoute:points=>{app.setRoute(points);setRouteControls(true);},
   onStatus:message=>status.textContent=message
  });
+ document.querySelector("#routeMode").addEventListener("change",event=>{routeEditor.setMode(event.target.value);routeEditor.updateProgress(latestActivity.distance);});
+ document.getElementById("activityWeight").addEventListener("input",event=>{const value=Number(event.target.value);if(value>=30&&value<=250){weight=value;updateMonitor(latestActivity);}});
+ updateMonitor(latestActivity);
  document.querySelector("#drawRoute").addEventListener("click",()=>{app.clearRoute();setRouteControls(false);routeEditor.draw();});
  document.querySelector("#clearRoute").addEventListener("click",()=>{routeEditor.clear();app.clearRoute();setRouteControls(false);});
  document.querySelector("#start").addEventListener("click",()=>app.start());
