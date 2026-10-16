@@ -6,9 +6,10 @@ import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {CharacterAnimator} from "./character.js";
 import {MetricPath} from "./path.js";
 import {Locomotion} from "./locomotion.js";
+import {activityMetrics} from "./activity.js";
 
 const SR={wkid:3857};
-export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
+export function createSkeletonNode(view,{modelUrl,onStatus=()=>{},onActivity=()=>{}}={}) {
  let route=null;
  let path=null;
  let motion=null;
@@ -180,6 +181,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.root.visible=true;
    this.debugCube.visible=showCube;
    const pose=motion.update(dt);
+   if(now-(this.lastActivityUpdate||0)>140 || pose.finished){
+    this.lastActivityUpdate=now;
+    onActivity(activityMetrics({path,distance:motion.distance,elapsed:motion.elapsed,speed:motion.running?motion.speed:0}));
+   }
 
    if(pose.finished && !this.completionReported){
     this.completionReported=true;
@@ -376,6 +381,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    node.headingInitialized=false;
    node.completionReported=false;
    node.requestRender();
+   onActivity(activityMetrics({path,distance:0,elapsed:0,speed:0}));
   },
   clearRoute(){
    motion?.pause();
@@ -387,6 +393,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    node.debugCube.visible=false;
    node.completionReported=false;
    node.requestRender();
+   onActivity(activityMetrics({path:null}));
   },
   async focus(){
    if(!motion)throw new Error("Draw a route before focusing the Soldier.");
@@ -412,7 +419,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    node.requestRender();
    onStatus("Focused on "+(showCube?"debug cube":"Soldier")+"; use mouse wheel for closer inspection.");
   },
-  start(){if(!motion){onStatus("Draw a route first.");return;}motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){if(!motion)return;motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){if(!motion)return;motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0){selectedSpeed=speed;if(motion)motion.speed=speed;}node.requestRender();},
+  start(){if(!motion){onStatus("Draw a route first.");return;}motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){if(!motion)return;motion.pause();onActivity(activityMetrics({path,distance:motion.distance,elapsed:motion.elapsed,speed:0}));onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){if(!motion)return;motion.reset();onActivity(activityMetrics({path,distance:0,elapsed:0,speed:0}));node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0){selectedSpeed=speed;if(motion)motion.speed=speed;}node.requestRender();},
   setFootClearance(meters){
    if(!Number.isFinite(meters))return;
    footClearance=Math.max(-0.5,Math.min(1,meters));
