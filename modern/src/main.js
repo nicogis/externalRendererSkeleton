@@ -45,6 +45,10 @@ try {
  document.querySelector("#pause").addEventListener("click",()=>app.pause());
  document.querySelector("#reset").addEventListener("click",()=>app.reset());
  document.querySelector("#focus").addEventListener("click",()=>app.focus().catch(error=>{status.textContent="Focus failed: "+error.message;console.error(error);}));
+ document.querySelector("#clearance").addEventListener("input",event=>{
+  app.setFootClearance(Number(event.target.value));
+  document.querySelector("#clearanceValue").textContent=Number(event.target.value).toFixed(2);
+ });
  document.querySelector("#heading").addEventListener("input",event=>{
   app.setHeadingOffset(Number(event.target.value));
   document.querySelector("#headingValue").textContent=event.target.value;
