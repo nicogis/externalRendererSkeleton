@@ -21,3 +21,30 @@ test("gait playback scales with physical speed",()=>{
  assert.equal(animator.active.timeScale,2);
  animator.dispose();
 });
+
+test("switches from walking to running at threshold",()=>{
+ const model=new THREE.Group();
+ const walk=new THREE.AnimationClip("Walk",1,[]);
+ const run=new THREE.AnimationClip("Run",1,[]);
+ const idle=new THREE.AnimationClip("Idle",1,[]);
+ const animator=new CharacterAnimator(model,[walk,run,idle],{
+  clipMetersPerSecond:1.4,runMetersPerSecond:4.5,runThreshold:2.8
+ });
+ animator.update(.016,1.4);
+ assert.equal(animator.gait,"walk");
+ assert.equal(animator.active.timeScale,1);
+ animator.update(.016,4.5);
+ assert.equal(animator.gait,"run");
+ assert.equal(animator.active.timeScale,1);
+ animator.update(.016,0);
+ assert.equal(animator.gait,"idle");
+ animator.dispose();
+});
+test("falls back to walk when no run clip is available",()=>{
+ const model=new THREE.Group();
+ const walk=new THREE.AnimationClip("Walk",1,[]);
+ const animator=new CharacterAnimator(model,[walk]);
+ animator.update(.016,4);
+ assert.equal(animator.gait,"walk");
+ animator.dispose();
+});
