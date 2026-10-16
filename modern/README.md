@@ -18,7 +18,7 @@ npm run dev
 ```
 
 Open the URL displayed by Vite. The status area reports model loading errors
-or lists exported animation clips; use Start, Pause, Reset and Speed to experiment.
+or lists exported animation clips. The Soldier remains hidden until a route is drawn. Use Start, Pause, Reset and Speed after completing the route.
 
 ## Verification / limitations
 
@@ -31,4 +31,4 @@ or lists exported animation clips; use Start, Pause, Reset and Speed to experime
 
 ## Draw your own route
 
-Press **Draw route**, click along a road or trail and **double-click** to finish. The app samples ArcGIS terrain elevations along the resulting polyline, draws a cyan ground-level line, resets the Soldier to the new start and lets **Start** animate along the new path. Use **Focus Soldier** to inspect the new start, and **Clear route** to restore the sample route. **Esc** cancels drawing. This is manual tracing, not automated routing or snapping to a road network.
+Press **Draw route**, click along a road or trail and **double-click** to finish. The app samples ArcGIS terrain elevations along the resulting polyline, draws a cyan ground-level line, resets the Soldier to the new start and lets **Start** animate along the new path. Use **Focus Soldier** to inspect the new start, and **Clear route** to remove the route and hide the Soldier until another one is drawn. **Esc** cancels drawing. This is manual tracing, not automated routing or snapping to a road network.
