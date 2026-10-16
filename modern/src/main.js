@@ -13,41 +13,22 @@ try {
  await element.viewOnReady();
  const view=element.view;
  element.camera={position:{x:998349.7321,y:5631040.5139,z:90,spatialReference:{wkid:3857}},heading:0,tilt:75};
- // ArcGIS-native volumetric marker: independent of Three.js and RenderNode.
- // Visible in noNode and noThree modes as an unambiguous geospatial reference.
- const markers=new GraphicsLayer({
-  title:"Debug: route start (orange sphere)",
-  elevationInfo:{mode:"relative-to-ground"}
- });
- markers.add(new Graphic({
-  geometry:{type:"point",x:998349.7321,y:5631130.5139,z:35,spatialReference:{wkid:3857}},
-  symbol:{
-   type:"point-3d",
-   symbolLayers:[{
-    type:"object",
-    resource:{primitive:"sphere"},
-    width:36,height:36,depth:36,
-    material:{color:[255,80,0,1]}
-   }]
-  },
-  attributes:{Name:"Route start / ArcGIS reference"}
- }));
- const showMarker=new URLSearchParams(window.location.search).has("showMarker");
- markers.visible=showMarker;
- view.map.add(markers);
- console.info("[Skeleton] Diagnostic sphere",showMarker?"visible":"hidden (add ?showMarker to display)");
  await view.goTo({target:{type:"point",x:998349.7321,y:5631130.5139,z:0,spatialReference:{wkid:3857}},scale:2500,tilt:65},{animate:false});
  if(new URLSearchParams(window.location.search).has("noNode")){
   status.textContent="Diagnostic: ArcGIS SceneView only; RenderNode and Three.js disabled.";
   console.info("[Skeleton] noNode mode: no custom renderer created");
  } else {
   const app=createSkeletonNode(view,{modelUrl:new URL("models/Soldier.glb",document.baseURI).href,onStatus:message=>status.textContent=message});
+ const requiresRoute=["start","pause","reset","focus"];
+ const setRouteControls=enabled=>requiresRoute.forEach(id=>{document.getElementById(id).disabled=!enabled;});
+ setRouteControls(false);
+ status.textContent="No route selected. Click Draw route, trace the road and double-click to finish.";
  const routeEditor=setupRouteEditor(view,{
-  onRoute:points=>app.setRoute(points),
+  onRoute:points=>{app.setRoute(points);setRouteControls(true);},
   onStatus:message=>status.textContent=message
  });
- document.querySelector("#drawRoute").addEventListener("click",()=>routeEditor.draw());
- document.querySelector("#clearRoute").addEventListener("click",()=>{routeEditor.clear();app.resetRoute();});
+ document.querySelector("#drawRoute").addEventListener("click",()=>{app.clearRoute();setRouteControls(false);routeEditor.draw();});
+ document.querySelector("#clearRoute").addEventListener("click",()=>{routeEditor.clear();app.clearRoute();setRouteControls(false);});
  document.querySelector("#start").addEventListener("click",()=>app.start());
  document.querySelector("#pause").addEventListener("click",()=>app.pause());
  document.querySelector("#reset").addEventListener("click",()=>app.reset());
