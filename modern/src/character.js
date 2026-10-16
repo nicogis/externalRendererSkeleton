@@ -14,7 +14,7 @@ export function assetCorrection(forward,up) {
 }
 
 export class CharacterAnimator {
- constructor(model,clips,{clipMetersPerSecond=1.4,forward=[0,1,0],up=[0,0,1]}={}) {
+ constructor(model,clips,{clipMetersPerSecond=1.4,runMetersPerSecond=4.5,runThreshold=2.8,forward=[0,1,0],up=[0,0,1]}={}) {
   if(!(clipMetersPerSecond>0))throw new Error("clipMetersPerSecond must be positive");
   this.model=model;
   this.model.quaternion.copy(assetCorrection(forward,up));
@@ -22,6 +22,9 @@ export class CharacterAnimator {
   this.actions=new Map();
   for(const clip of clips)this.actions.set(clip.name.toLowerCase(),this.mixer.clipAction(clip));
   this.clipMetersPerSecond=clipMetersPerSecond;
+  this.runMetersPerSecond=runMetersPerSecond;
+  this.runThreshold=runThreshold;
+  this.gait="idle";
   this.active=null;
   this.select("idle",0);
  }
@@ -39,14 +42,21 @@ export class CharacterAnimator {
  }
  update(deltaSeconds,speedMetersPerSecond) {
   const moving=speedMetersPerSecond>0;
-  if(moving) {
-   if(!this.select("walk"))this.select("run");
-  } else {
-   if(!this.select("idle") && this.active)this.active.paused=true;
+  const wantsRun=moving && speedMetersPerSecond>=this.runThreshold;
+  let selected="idle";
+  if(wantsRun && this.find("run")) selected="run";
+  else if(moving && this.find("walk")) selected="walk";
+  else if(moving && this.find("run")) selected="run";
+  this.gait=selected;
+  if(selected!=="idle"){
+   this.select(selected);
+  }else if(!this.select("idle") && this.active){
+   this.active.paused=true;
   }
-  if(this.active && moving) {
+  if(this.active && selected!=="idle"){
    this.active.paused=false;
-   this.active.timeScale=speedMetersPerSecond/this.clipMetersPerSecond;
+   const referenceSpeed=selected==="run"?this.runMetersPerSecond:this.clipMetersPerSecond;
+   this.active.timeScale=speedMetersPerSecond/referenceSpeed;
   }
   this.mixer.update(Math.min(Math.max(0,deltaSeconds),0.1));
  }
