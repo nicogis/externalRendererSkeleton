@@ -16,6 +16,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  let headingOffsetDeg=180; // Soldier GLB looks backwards relative to its nominal forward axis.
  const localZ=new THREE.Vector3(0,0,1);
  let groundElevation=null;
+ let footClearance=0.10; // metres above sampled terrain; adjustable for gait/terrain calibration
  // Diagnostic mode: keep ArcGIS RenderNode scheduling, skip all Three.js WebGL calls.
  const params=new URLSearchParams(window.location.search);
  const disableThree=params.has("noThree");
@@ -184,10 +185,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
    this.lastTime=now;
    const pose=motion.update(dt);
-   if(motion.running && now-this.lastStatusTime>500){
-    this.lastStatusTime=now;
-    onStatus(`Walking: ${pose.distance.toFixed(1)} / ${path.totalLength.toFixed(0)} m at ${motion.speed.toFixed(1)} m/s`);
-   }
+
    if(pose.finished && !this.completionReported){
     this.completionReported=true;
     onStatus("Route completed. Press Reset to start again.");
@@ -197,7 +195,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     if(motion.running)this.requestRender();
     return output;
    }
-   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+(showCube?35:2)];
+   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+(showCube?35:footClearance)];
    // The direct-position blue probe rendered at this same geographic anchor.
    // Apply ONLY translation to the root, avoiding the suspect ENU basis matrix.
    const anchor=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
@@ -233,6 +231,10 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.debugCube.position.copy(this.root.getWorldPosition(new THREE.Vector3()));
    this.debugCube.updateMatrixWorld(true);
    this.animator?.update(dt,pose.animationScale>0?motion.speed:0);
+   if(motion.running && now-this.lastStatusTime>500){
+    this.lastStatusTime=now;
+    onStatus(`${this.animator?.gait==="run"?"Running":"Walking"}: ${pose.distance.toFixed(1)} / ${path.totalLength.toFixed(0)} m at ${motion.speed.toFixed(1)} m/s, clearance ${footClearance.toFixed(2)} m`);
+   }
    this.camera3.projectionMatrix.fromArray(this.camera.projectionMatrix);
    this.camera3.projectionMatrixInverse.copy(this.camera3.projectionMatrix).invert();
    const viewMatrix=new THREE.Matrix4().fromArray(this.camera.viewMatrix);
@@ -370,7 +372,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
   async focus(){
    const anchor=new Point({
     x:route[0][0],y:route[0][1],
-    z:(groundElevation??0)+(showCube?35:3),
+    z:(groundElevation??0)+(showCube?35:footClearance+1.5),
     spatialReference:SR
    });
    if(showCube){
@@ -391,6 +393,12 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    onStatus("Focused on "+(showCube?"debug cube":"Soldier")+"; use mouse wheel for closer inspection.");
   },
   start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();},
+  setFootClearance(meters){
+   if(!Number.isFinite(meters))return;
+   footClearance=Math.max(-0.5,Math.min(1,meters));
+   node.requestRender();
+   onStatus("Foot clearance: "+footClearance.toFixed(2)+" m");
+  },
   setHeadingOffset(degrees){
    if(!Number.isFinite(degrees))return;
    headingOffsetDeg=degrees;
