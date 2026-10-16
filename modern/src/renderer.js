@@ -205,9 +205,11 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    // IMPORTANT: Never call renderer.setSize() on the ArcGIS-owned canvas.
    // Three.js setSize mutates canvas.width/height even with updateStyle=false,
    // potentially zeroing Esri's framebuffer attachments.
-   // Three.js has its own VAO and buffer state caches; synchronize before draw.
-   this.bindRenderTarget();
+   // Restore the sequence used by the successful blue placement probe.
+   // Three.js resetState() may alter shared GL bindings: ArcGIS must rebind
+   // its target AFTER the Three.js reset, not before it.
    this.renderer3.resetState();
+   this.bindRenderTarget();
    const viewport=gl.getParameter(gl.VIEWPORT);
    if(placementProbe || cubeOnly){
     // Identical projected point to the fuchsia box; bypass its geographic parent matrix.
