@@ -1,5 +1,7 @@
 # externalRendererSkeleton
 
+**[▶ Live Demo — Open in GitHub Pages](https://nicogis.github.io/externalRendererSkeleton/)**
+
 ArcGIS Maps SDK for JavaScript **5.1** + Three.js **RenderNode** sample with animated **Soldier.glb**, manually drawn 3D routes and an activity dashboard.
 
 The current Vite project lives at the **repository root**. The historic ArcGIS 4.1 / legacy Three.js implementation was removed from the current source tree during modernization and remains available in Git history.
