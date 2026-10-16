@@ -13,6 +13,8 @@ const route=[[998349.7321,5631130.5139],[998650.4915,5631435.5494],[999191.5042,
 export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const path=new MetricPath(route);
  const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
+ let headingOffsetDeg=180; // Soldier GLB looks backwards relative to its nominal forward axis.
+ const localZ=new THREE.Vector3(0,0,1);
  let groundElevation=null;
  // Diagnostic mode: keep ArcGIS RenderNode scheduling, skip all Three.js WebGL calls.
  const params=new URLSearchParams(window.location.search);
@@ -204,7 +206,25 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     anchor[1]-this.localOrigin[1],
     anchor[2]-this.localOrigin[2]
    );
-   this.root.quaternion.identity();
+   // Construct a local East/North/Up frame at this geographic position.
+   // In a global ArcGIS SceneView the render-space vertical is not world +Z.
+   // Translation remains via toRenderCoordinates (already browser-validated).
+   const enu=webgl.renderCoordinateTransformAt(view,raisedPosition,SR,new Float64Array(16));
+   const east=new THREE.Vector3(enu[0],enu[1],enu[2]).normalize();
+   const north=new THREE.Vector3(enu[4],enu[5],enu[6]).normalize();
+   const up=new THREE.Vector3(enu[8],enu[9],enu[10]).normalize();
+   const tangent=pose.tangent;
+   const forward=new THREE.Vector3()
+     .addScaledVector(east,tangent[0])
+     .addScaledVector(north,tangent[1]);
+   forward.addScaledVector(up,-forward.dot(up)).normalize();
+   const right=new THREE.Vector3().crossVectors(forward,up).normalize();
+   forward.crossVectors(up,right).normalize();
+   // Three's canonical character basis: +X right, +Y forward, +Z up.
+   const rotationBasis=new THREE.Matrix4().makeBasis(right,forward,up);
+   const headingCorrection=new THREE.Quaternion().setFromAxisAngle(localZ,THREE.MathUtils.degToRad(headingOffsetDeg));
+   const desired=new THREE.Quaternion().setFromRotationMatrix(rotationBasis).multiply(headingCorrection);
+   this.root.quaternion.slerp(desired,Math.min(1,dt*10));
    this.root.scale.set(1,1,1);
    this.root.updateMatrixWorld(true);
    this.debugCube.position.copy(this.root.getWorldPosition(new THREE.Vector3()));
@@ -367,5 +387,11 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    node.requestRender();
    onStatus("Focused on "+(showCube?"debug cube":"Soldier")+"; use mouse wheel for closer inspection.");
   },
-  start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();}};
+  start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();},
+  setHeadingOffset(degrees){
+   if(!Number.isFinite(degrees))return;
+   headingOffsetDeg=degrees;
+   node.requestRender();
+   onStatus("Model heading correction: "+degrees+" degrees (local vertical).");
+  }};
 }
