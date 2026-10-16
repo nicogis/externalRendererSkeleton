@@ -17,7 +17,7 @@ npm run build
 
 Vite produces `dist/`. Publish **the contents of `dist/`** to your IIS virtual folder (for example `/skeleton/`), not the source directory. The build uses Vite `base: "./"` for relative production asset URLs. It emits `dist/models/Soldier.glb` from `models/Soldier.glb`, and copies `public/web.config` to `dist/web.config` for IIS GLB MIME support.
 
-**GitHub Pages:** This is a Vite application, so a Pages site must deploy the compiled `dist/` artifact, not the unbuilt repository root. Configure GitHub Pages to publish the build output via a GitHub Actions deployment workflow before expecting the former static Pages URL to work.
+**GitHub Pages:** The `.github/workflows/ci.yml` workflow tests and builds the app, then deploys the compiled `dist/` directory after each push to `master` (or manual workflow dispatch on `master`). Pull requests only run the build and tests. Once, in the repository's **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source. The expected Live URL is https://nicogis.github.io/externalRendererSkeleton/. GitHub Actions must be enabled and the `github-pages` deployment environment must allow `master`. `dist/` stays ignored by Git; do not commit it.
 
 ## Controls
 
