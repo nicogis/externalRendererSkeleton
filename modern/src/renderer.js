@@ -350,9 +350,22 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     z:(groundElevation??0)+(showCube?35:3),
     spatialReference:SR
    });
-   await view.goTo({target:anchor,scale:showCube?850:180,heading:0,tilt:70},{animate:false});
+   if(showCube){
+    await view.goTo({target:anchor,scale:850,heading:0,tilt:70},{animate:false});
+   }else{
+    // SceneView scale-based goTo can leave a 2.5m model only a few pixels tall.
+    // Use a real world-space camera offset approximately 12m from the soldier.
+    const camera=view.camera.clone();
+    camera.position=new Point({
+     x:route[0][0],y:route[0][1]-12,z:(groundElevation??0)+7,
+     spatialReference:SR
+    });
+    camera.heading=0;
+    camera.tilt=68;
+    await view.goTo(camera,{animate:false});
+   }
    node.requestRender();
-   onStatus("Focus requested; "+(showCube?"debug cube":"Soldier")+" should be near screen center.");
+   onStatus("Focused on "+(showCube?"debug cube":"Soldier")+"; use mouse wheel for closer inspection.");
   },
   start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();}};
 }
