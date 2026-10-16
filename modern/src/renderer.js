@@ -23,6 +23,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const worldProbe=params.has("worldProbe");
  const placementProbe=params.has("placementProbe");
  const cubeOnly=params.has("cubeOnly");
+ const showCube=params.has("showCube");
  const Node=RenderNode.createSubclass({
   consumes:{required:["transparent-color"]},
   produces:"transparent-color",
@@ -82,6 +83,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.debugCube.renderOrder=999;
    this.debugCube.frustumCulled=false;
    // Keep debug mesh independent of the GLB hierarchy, as in the working blue probe.
+   this.debugCube.visible=showCube;
    this.scene3.add(this.debugCube);
    this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
    this.lastTime=performance.now();
@@ -110,11 +112,25 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     const gltf=await new GLTFLoader().loadAsync(url);
     if(this.disposed)return;
     this.root.remove(this.marker);
-    this.root.add(gltf.scene);
+    // Keep the GLB's own animation hierarchy intact. A separate wrapper adjusts
+    // model size and foot placement independently of movement along the route.
+    this.characterHolder=new THREE.Group();
+    this.root.add(this.characterHolder);
+    this.characterHolder.add(gltf.scene);
     this.animator=new CharacterAnimator(gltf.scene,gltf.animations,{forward:[0,0,1],up:[0,1,0]});
+    gltf.scene.updateMatrixWorld(true);
     const bounds=new THREE.Box3().setFromObject(gltf.scene);
-    console.info("[Skeleton] Soldier bounds:",bounds.min.toArray(),bounds.max.toArray(),"clips:",gltf.animations.map(a=>a.name));
-    report("Character loaded. Clips: "+(gltf.animations.map(c=>c.name).join(", ")||"none"));
+    const modelSize=bounds.getSize(new THREE.Vector3());
+    if(!Number.isFinite(modelSize.z)||modelSize.z<=0)throw new Error("Soldier bounds have invalid height");
+    const scale=2.5/modelSize.z; // Display as a human-sized 2.5-metre reference.
+    this.characterHolder.scale.setScalar(scale);
+    gltf.scene.position.z-=bounds.min.z;
+    this.characterHolder.updateMatrixWorld(true);
+    this.characterLoaded=true;
+    const clipNames=gltf.animations.map(a=>a.name);
+    console.info("[Skeleton] Soldier bounds",bounds.min.toArray(),bounds.max.toArray(),
+      "scale",scale,"clips",clipNames);
+    report("Soldier ready: height "+(modelSize.z*scale).toFixed(2)+" m; scale "+scale.toFixed(3)+"; clips: "+(clipNames.join(", ")||"none"));
     this.requestRender();
    } catch(error) {
     report("Character load error: "+error.message);
@@ -179,7 +195,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     if(motion.running)this.requestRender();
     return output;
    }
-   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+35];
+   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+(showCube?35:2)];
    // The direct-position blue probe rendered at this same geographic anchor.
    // Apply ONLY translation to the root, avoiding the suspect ENU basis matrix.
    const anchor=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
@@ -276,7 +292,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     this.lastGeometryReport=now;
     const inside=Number.isFinite(ndc3D.x)&&Number.isFinite(ndc3D.y)&&Number.isFinite(ndc3D.z)
       &&Math.abs(ndc3D.x)<=1&&Math.abs(ndc3D.y)<=1&&Math.abs(ndc3D.z)<=1;
-    onStatus("Cube NDC "+ndc3D.toArray().map(v=>v.toFixed(3)).join(", ")
+    onStatus((showCube?"Cube":"Soldier") + " NDC "+ndc3D.toArray().map(v=>v.toFixed(3)).join(", ")
        +" | "+(inside?"IN frustum":"OUT of frustum")
        +" | "+(groundElevation===null?"DEM pending":"DEM "+groundElevation.toFixed(1)+"m"));
    }
