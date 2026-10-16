@@ -347,12 +347,12 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
   async focus(){
    const anchor=new Point({
     x:route[0][0],y:route[0][1],
-    z:(groundElevation??0)+35,
+    z:(groundElevation??0)+(showCube?35:3),
     spatialReference:SR
    });
-   await view.goTo({target:anchor,scale:850,heading:0,tilt:65},{animate:false});
+   await view.goTo({target:anchor,scale:showCube?850:180,heading:0,tilt:70},{animate:false});
    node.requestRender();
-   onStatus("Focus requested; wait for live cube NDC in status.");
+   onStatus("Focus requested; "+(showCube?"debug cube":"Soldier")+" should be near screen center.");
   },
   start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();}};
 }
