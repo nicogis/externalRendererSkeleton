@@ -8,13 +8,11 @@ import {MetricPath} from "./path.js";
 import {Locomotion} from "./locomotion.js";
 
 const SR={wkid:3857};
-const defaultRoute=[[998349.7321,5631130.5139],[998650.4915,5631435.5494],[999191.5042,5631790.1626],[999954.0427,5631939.8923],[1000821.2216,5631456.0378],[1001712.8907,5631311.0441],[1002457.6181,5631377.2365],[1002683.5966,5631619.9465],[1003417.1921,5631433.9734]];
-
 export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
- let route=defaultRoute;
- let path=new MetricPath(route);
- const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
- let terrainPath=false;
+ let route=null;
+ let path=null;
+ let motion=null;
+ let selectedSpeed=1.4;
  let headingOffsetDeg=180; // Soldier GLB looks backwards relative to its nominal forward axis.
  const localZ=new THREE.Vector3(0,0,1);
  let groundElevation=null;
@@ -90,24 +88,11 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    // Keep debug mesh independent of the GLB hierarchy, as in the working blue probe.
    this.debugCube.visible=showCube;
    this.scene3.add(this.debugCube);
-   this.localOrigin=webgl.toRenderCoordinates(view,[...route[0],0],0,SR,new Float64Array(3),0,1);
+   this.localOrigin=new Float64Array(3);
+   this.root.visible=false;
    this.lastTime=performance.now();
    this.lastStatusTime=0;
    this.animator=null;
-   // Both marker and box must be compared ABOVE terrain, not at z=0.
-   view.map.ground.queryElevation(new Point({
-    x:route[0][0],y:route[0][1],z:0,spatialReference:SR
-   }),{demResolution:"auto"}).then(result=>{
-    const z=result.geometry.z;
-    if(!Number.isFinite(z))throw Error("DEM returned invalid elevation");
-    groundElevation=z;
-    console.info("[Skeleton] DEM elevation at route origin (m):",z);
-    onStatus("Terrain elevation "+z.toFixed(1)+" m; diagnostic cube 35 m above terrain.");
-    this.requestRender();
-   }).catch(error=>{
-    console.error("[Skeleton] terrain elevation query failed",error);
-    onStatus("Terrain elevation unavailable: "+error.message);
-   });
    if(modelUrl && !cubeOnly)this.loadCharacter(modelUrl,onStatus);
    if(cubeOnly)onStatus("Cube-only mode: Soldier is not loaded.");
    onStatus("RenderNode initialized: diagnostic capsule, not yet animated marine.");
@@ -147,8 +132,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     const now=performance.now();
     const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
     this.lastTime=now;
-    motion.update(dt);
-    if(motion.running)this.requestRender();
+    motion?.update(dt);
+    if(motion?.running)this.requestRender();
     return;
    }
    this.resetWebGLState();
@@ -186,6 +171,14 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    const now=performance.now();
    const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
    this.lastTime=now;
+   if(!motion){
+    this.root.visible=false;
+    this.debugCube.visible=false;
+    this.resetWebGLState();
+    return output;
+   }
+   this.root.visible=true;
+   this.debugCube.visible=showCube;
    const pose=motion.update(dt);
 
    if(pose.finished && !this.completionReported){
@@ -197,7 +190,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     if(motion.running)this.requestRender();
     return output;
    }
-   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+(terrainPath?0:groundElevation)+(showCube?35:footClearance)];
+   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+(showCube?35:footClearance)];
    // The direct-position blue probe rendered at this same geographic anchor.
    // Apply ONLY translation to the root, avoiding the suspect ENU basis matrix.
    const anchor=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
@@ -373,34 +366,33 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
   node,
   setRoute(points){
    const replacement=new MetricPath(points);
-   motion.pause();
-   motion.path=replacement;
-   motion.reset();
-   route=points;
+   if(points.some(p=>p.length<3||!Number.isFinite(p[2])))throw new Error("Route requires valid terrain elevations.");
+   route=replacement.points;
    path=replacement;
-   terrainPath=true;
-   groundElevation=points[0][2];
+   motion=new Locomotion(path,{speed:selectedSpeed,clipMetersPerSecond:1.4});
+   groundElevation=route[0][2];
    node.localOrigin=webgl.toRenderCoordinates(view,[route[0][0],route[0][1],0],0,SR,new Float64Array(3),0,1);
+   node.root.visible=true;
    node.headingInitialized=false;
    node.completionReported=false;
    node.requestRender();
   },
-  resetRoute(){
-   motion.pause();
-   route=defaultRoute;
-   path=new MetricPath(route);
-   motion.path=path;
-   motion.reset();
-   terrainPath=false;
-   node.localOrigin=webgl.toRenderCoordinates(view,[route[0][0],route[0][1],0],0,SR,new Float64Array(3),0,1);
-   node.headingInitialized=false;
+  clearRoute(){
+   motion?.pause();
+   route=null;
+   path=null;
+   motion=null;
+   groundElevation=null;
+   node.root.visible=false;
+   node.debugCube.visible=false;
    node.completionReported=false;
    node.requestRender();
   },
   async focus(){
+   if(!motion)throw new Error("Draw a route before focusing the Soldier.");
    const anchor=new Point({
     x:route[0][0],y:route[0][1],
-    z:(terrainPath?route[0][2]:(groundElevation??0))+(showCube?35:footClearance+1.5),
+    z:route[0][2]+(showCube?35:footClearance+1.5),
     spatialReference:SR
    });
    if(showCube){
@@ -410,7 +402,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     // Use a real world-space camera offset approximately 12m from the soldier.
     const camera=view.camera.clone();
     camera.position=new Point({
-     x:route[0][0],y:route[0][1]-12,z:(terrainPath?route[0][2]:(groundElevation??0))+7,
+     x:route[0][0],y:route[0][1]-12,z:route[0][2]+7,
      spatialReference:SR
     });
     camera.heading=0;
@@ -420,7 +412,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    node.requestRender();
    onStatus("Focused on "+(showCube?"debug cube":"Soldier")+"; use mouse wheel for closer inspection.");
   },
-  start(){motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0)motion.speed=speed;node.requestRender();},
+  start(){if(!motion){onStatus("Draw a route first.");return;}motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){if(!motion)return;motion.pause();onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){if(!motion)return;motion.reset();node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0){selectedSpeed=speed;if(motion)motion.speed=speed;}node.requestRender();},
   setFootClearance(meters){
    if(!Number.isFinite(meters))return;
    footClearance=Math.max(-0.5,Math.min(1,meters));
