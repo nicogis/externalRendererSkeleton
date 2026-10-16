@@ -71,11 +71,11 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.scene3.add(lamp);
    this.marker=new THREE.Mesh(new THREE.CapsuleGeometry(0.5,1.5,8,12),new THREE.MeshNormalMaterial());
    this.marker.position.z=1.25;
-   this.root.add(this.marker);
+   if(!cubeOnly)this.root.add(this.marker);
    // Independent of glTF loading: if this pink box is invisible while the orange
    // ArcGIS sphere is visible, investigate WebGL target and camera matrices.
    this.debugCube=new THREE.Mesh(
-    new THREE.BoxGeometry(18,18,18),
+    new THREE.BoxGeometry(18,18,18).toNonIndexed(),
     new THREE.MeshBasicMaterial({color:0xff00ff,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
    );
    this.debugCube.position.z=0;
@@ -206,8 +206,8 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    // Three.js setSize mutates canvas.width/height even with updateStyle=false,
    // potentially zeroing Esri's framebuffer attachments.
    // Three.js has its own VAO and buffer state caches; synchronize before draw.
-   this.renderer3.resetState();
    this.bindRenderTarget();
+   this.renderer3.resetState();
    const viewport=gl.getParameter(gl.VIEWPORT);
    if(placementProbe){
     // Identical projected point to the fuchsia box; bypass its geographic parent matrix.
@@ -297,7 +297,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     this.renderer3.render(threeProbe?this.screenScene:this.scene3,threeProbe?this.screenCamera:this.camera3);
     if(!threeProbe && now-(this.lastDrawReport||0)>1500){
      this.lastDrawReport=now;
-     console.info("[Skeleton] scene draw calls",this.renderer3.info.render.calls,"cube",this.debugCube.position.toArray());
+     console.info("[Skeleton] scene draw calls",this.renderer3.info.render.calls,"cube",this.debugCube.position.toArray(), "cube indexed", Boolean(this.debugCube.geometry.index), "gl error", gl.getError());
     }
     if(threeProbe&&!this.reportedThreeProbe){this.reportedThreeProbe=true;onStatus("Three.js probe active: cyan rectangle should appear in the viewport.");}
    } else if(!this.invalidViewportReported){
