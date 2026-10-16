@@ -31,8 +31,10 @@ try {
   },
   attributes:{Name:"Route start / ArcGIS reference"}
  }));
+ const showMarker=new URLSearchParams(window.location.search).has("showMarker");
+ markers.visible=showMarker;
  view.map.add(markers);
- console.info("[Skeleton] Orange ArcGIS sphere added at WebMercator route origin");
+ console.info("[Skeleton] Diagnostic sphere",showMarker?"visible":"hidden (add ?showMarker to display)");
  await view.goTo({target:{type:"point",x:998349.7321,y:5631130.5139,z:0,spatialReference:{wkid:3857}},scale:2500,tilt:65},{animate:false});
  if(new URLSearchParams(window.location.search).has("noNode")){
   status.textContent="Diagnostic: ArcGIS SceneView only; RenderNode and Three.js disabled.";
