@@ -1,0 +1,19 @@
+html,body,arcgis-scene{margin:0;width:100%;height:100%;display:block}#controls{position:absolute;bottom:16px;left:16px;padding:12px;background:#142334;color:white;font:14px system-ui;border-radius:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 60px)}button{cursor:pointer;padding:6px 12px}#status{flex-basis:100%}
+#controls{max-width:min(980px,calc(100% - 60px));box-shadow:0 6px 24px #07121c55}
+#controls label{display:inline-flex;align-items:center;gap:6px}
+#controls select{padding:6px;background:#263b50;color:white;border:1px solid #5b7087;border-radius:4px}
+#controls button:disabled{opacity:.45;cursor:not-allowed}
+#activityMonitor{position:absolute;right:16px;top:16px;width:min(290px,calc(100% - 40px));box-sizing:border-box;max-height:calc(100vh - 42px);overflow:auto;background:#142334f0;color:#f7fbff;border:1px solid #304b68;border-radius:9px;padding:12px;font:13px system-ui;box-shadow:0 8px 32px #05132155}
+#activityMonitor summary{font-size:15px;font-weight:700;cursor:pointer;list-style:disclosure-closed}
+#activityMonitor[open] summary{list-style:disclosure-open;margin-bottom:12px}
+#activityMonitor .sim-note{font-size:10px;font-weight:400;color:#a3b6c9;margin-left:8px}
+#activityMonitor .metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#activityMonitor .metrics>div{background:#253b52;border-radius:6px;padding:9px 8px;min-width:0}
+#activityMonitor .metrics small{display:block;color:#b9c9d8;font-size:11px}
+#activityMonitor .metrics strong{display:block;font-size:17px;margin-top:4px;font-variant-numeric:tabular-nums}
+#activityMonitor .metric-weight{display:block;margin-top:12px}
+#activityMonitor .metric-weight input{width:56px;margin:0 4px 0 8px}
+#activityMonitor .meter{height:6px;background:#3b536c;border-radius:6px;margin-top:12px;overflow:hidden}
+#activityMonitor .meter-fill{width:0;height:100%;background:#ffb22d;transition:width .1s linear}
+#activityMonitor .metric-disclaimer{color:#afc0d1;font-size:11px;line-height:1.4;margin:10px 0 0}
+@media(max-width:650px){#activityMonitor{top:8px;right:8px;width:205px}#activityMonitor .metrics strong{font-size:14px}#controls{bottom:8px;left:8px;max-width:calc(100% - 32px)}}
