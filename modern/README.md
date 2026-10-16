@@ -28,3 +28,7 @@ or lists exported animation clips; use Start, Pause, Reset and Speed to experime
 - The RenderNode/Three.js shared WebGL context is experimental and must be
   tested in a browser before the PR can be merged.
 - The legacy Marine source files remain untouched. No repository license added.
+
+## Draw your own route
+
+Press **Draw route**, click along a road or trail and **double-click** to finish. The app samples ArcGIS terrain elevations along the resulting polyline, draws a cyan ground-level line, resets the Soldier to the new start and lets **Start** animate along the new path. Use **Focus Soldier** to inspect the new start, and **Clear route** to restore the sample route. **Esc** cancels drawing. This is manual tracing, not automated routing or snapping to a road network.
