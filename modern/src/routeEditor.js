@@ -24,6 +24,10 @@ export function densifyPath(points,stepMeters=8,maxVertices=1800){
 export function setupRouteEditor(view,{onRoute,onStatus}){
  const layer=new GraphicsLayer({title:"Soldier route (drawn)",elevationInfo:{mode:"relative-to-ground",offset:0.5}});
  view.map.add(layer);
+ // Keep editable Sketch graphics separate from persistent progress graphics.
+ // Removing/re-adding 3D graphics on every frame can restart ArcGIS rendering.
+ const progressLayer=new GraphicsLayer({title:"Soldier route progress",elevationInfo:{mode:"relative-to-ground",offset:0.6}});
+ view.map.add(progressLayer);
  const sketch=new SketchViewModel({
   view,layer,
   polylineSymbol:{type:"line-3d",symbolLayers:[{type:"line",material:{color:[0,180,255]},size:5}]},
@@ -32,7 +36,8 @@ export function setupRouteEditor(view,{onRoute,onStatus}){
  });
  let processing=false;
  let generation=0,route=null,mode="progress",lastDistance=-1;
- const remaining=new Graphic(), completed=new Graphic();
+ const remaining=new Graphic({visible:false}), completed=new Graphic({visible:false});
+ progressLayer.addMany([remaining,completed]);
  const symbol=(color,size)=>({type:"line-3d",symbolLayers:[{type:"line",material:{color},size}]});
  const shape=points=>new Polyline({paths:[points.map(p=>[p[0],p[1]])],spatialReference:{wkid:3857}});
  function portion(from,to){
@@ -44,14 +49,27 @@ export function setupRouteEditor(view,{onRoute,onStatus}){
  function repaint(distance=0){
   if(!route)return;
   const d=Math.max(0,Math.min(route.totalLength,distance));
-  if(lastDistance>=0&&Math.abs(d-lastDistance)<0.4)return;
-  lastDistance=d;layer.removeAll();
-  if(mode==="light"){remaining.geometry=shape(route.points);remaining.symbol=symbol([100,190,205,0.45],2);layer.add(remaining);return;}
-  const rest=portion(d,route.totalLength);
-  if(rest&&mode==="progress"){remaining.geometry=shape(rest);remaining.symbol=symbol([60,180,210,0.45],2);layer.add(remaining);}
+  if(lastDistance>=0&&Math.abs(d-lastDistance)<0.15)return;
+  lastDistance=d;
+  // Update the geometry of the SAME two Graphics; never remove/re-add
+  // them while SceneView is building their GPU representation.
+  if(mode==="light"){
+   remaining.geometry=shape(route.points);
+   remaining.symbol=thinSymbol;
+   remaining.visible=true;
+   completed.visible=false;
+   return;
+  }
+  const rest=mode==="progress"?portion(d,route.totalLength):null;
+  remaining.visible=Boolean(rest);
+  if(rest){remaining.geometry=shape(rest);remaining.symbol=remainingSymbol;}
   const done=portion(0,d);
-  if(done){completed.geometry=shape(done);completed.symbol=symbol([255,178,45,0.9],4);layer.add(completed);}
+  completed.visible=Boolean(done);
+  if(done){completed.geometry=shape(done);completed.symbol=completedSymbol;}
  }
+ const thinSymbol=symbol([100,190,205,0.55],2);
+ const remainingSymbol=symbol([60,180,210,0.65],2);
+ const completedSymbol=symbol([255,178,45,1],4);
  sketch.on("create",async event=>{
   if(event.state!=="complete"||processing)return;
   processing=true;
@@ -73,22 +91,25 @@ export function setupRouteEditor(view,{onRoute,onStatus}){
    await onRoute(elevated);
    route=new MetricPath(elevated);
    lastDistance=-1;
+   layer.removeAll();
    repaint(0);
    onStatus("Route ready: "+elevated.length+" terrain samples. Press Focus Soldier or Start.");
   }catch(error){
    console.error("[Skeleton] route drawing failed",error);
    layer.removeAll();
+   remaining.visible=false;
+   completed.visible=false;
    route=null;
    onStatus("Route error: "+error.message+" Original route unchanged.");
   }finally{processing=false;}
  });
  return {
-  draw(){if(processing)return;generation++;route=null;lastDistance=-1;sketch.cancel();layer.removeAll();sketch.create("polyline",{mode:"click"});onStatus("Click along road; double-click to finish (Esc to cancel).");},
-  clear(){generation++;route=null;lastDistance=-1;sketch.cancel();layer.removeAll();onStatus("Drawn route cleared. Click Draw route to create another.");},
+  draw(){if(processing)return;generation++;route=null;lastDistance=-1;remaining.visible=false;completed.visible=false;sketch.cancel();layer.removeAll();sketch.create("polyline",{mode:"click"});onStatus("Click along road; double-click to finish (Esc to cancel).");},
+  clear(){generation++;route=null;lastDistance=-1;remaining.visible=false;completed.visible=false;sketch.cancel();layer.removeAll();onStatus("Drawn route cleared. Click Draw route to create another.");},
   setMode(value){if(!["light","reveal","progress"].includes(value))return;mode=value;lastDistance=-1;repaint(0);},
   updateProgress(distance){repaint(distance);},
   resetProgress(){lastDistance=-1;repaint(0);},
 
-  destroy(){sketch.destroy();view.map.remove(layer);layer.destroy();}
+  destroy(){sketch.destroy();view.map.remove(layer);view.map.remove(progressLayer);layer.destroy();progressLayer.destroy();}
  };
 }
