@@ -209,18 +209,19 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
    this.bindRenderTarget();
    this.renderer3.resetState();
    const viewport=gl.getParameter(gl.VIEWPORT);
-   if(placementProbe){
+   if(placementProbe || cubeOnly){
     // Identical projected point to the fuchsia box; bypass its geographic parent matrix.
     this.root.updateMatrixWorld(true);
     this.debugCube.getWorldPosition(this.placementProbeMesh.position);
     this.placementProbeMesh.updateMatrixWorld(true);
+    if(cubeOnly)this.placementProbeMesh.material.color.setHex(0xff00ff);
     this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
     this.renderer3.render(this.placementProbeScene,this.camera3);
     if(now-(this.lastPlacementProbeStatus||0)>1000){
      this.lastPlacementProbeStatus=now;
      const ndc=this.placementProbeMesh.position.clone().project(this.camera3);
      const position=this.placementProbeMesh.position.toArray();
-     onStatus("Blue placement cube: "+ndc.toArray().map(n=>n.toFixed(3)).join(", ")+" | draw calls "+this.renderer3.info.render.calls);
+     onStatus((cubeOnly?"Magenta cube-only":"Blue placement cube")+": "+ndc.toArray().map(n=>n.toFixed(3)).join(", ")+" | draw calls "+this.renderer3.info.render.calls);
      console.info("[Skeleton] placementProbe local pos",position,"NDC",ndc.toArray(),"calls",this.renderer3.info.render.calls);
     }
     this.resetWebGLState();
