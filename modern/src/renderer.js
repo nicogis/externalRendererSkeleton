@@ -8,11 +8,13 @@ import {MetricPath} from "./path.js";
 import {Locomotion} from "./locomotion.js";
 
 const SR={wkid:3857};
-const route=[[998349.7321,5631130.5139],[998650.4915,5631435.5494],[999191.5042,5631790.1626],[999954.0427,5631939.8923],[1000821.2216,5631456.0378],[1001712.8907,5631311.0441],[1002457.6181,5631377.2365],[1002683.5966,5631619.9465],[1003417.1921,5631433.9734]];
+const defaultRoute=[[998349.7321,5631130.5139],[998650.4915,5631435.5494],[999191.5042,5631790.1626],[999954.0427,5631939.8923],[1000821.2216,5631456.0378],[1001712.8907,5631311.0441],[1002457.6181,5631377.2365],[1002683.5966,5631619.9465],[1003417.1921,5631433.9734]];
 
 export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
- const path=new MetricPath(route);
+ let route=defaultRoute;
+ let path=new MetricPath(route);
  const motion=new Locomotion(path,{speed:1.4,clipMetersPerSecond:1.4});
+ let terrainPath=false;
  let headingOffsetDeg=180; // Soldier GLB looks backwards relative to its nominal forward axis.
  const localZ=new THREE.Vector3(0,0,1);
  let groundElevation=null;
@@ -195,7 +197,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     if(motion.running)this.requestRender();
     return output;
    }
-   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+groundElevation+(showCube?35:footClearance)];
+   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+(terrainPath?0:groundElevation)+(showCube?35:footClearance)];
    // The direct-position blue probe rendered at this same geographic anchor.
    // Apply ONLY translation to the root, avoiding the suspect ENU basis matrix.
    const anchor=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
@@ -369,10 +371,36 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
  const node=new Node({view});
  return {
   node,
+  setRoute(points){
+   const replacement=new MetricPath(points);
+   motion.pause();
+   motion.path=replacement;
+   motion.reset();
+   route=points;
+   path=replacement;
+   terrainPath=true;
+   groundElevation=points[0][2];
+   node.localOrigin=webgl.toRenderCoordinates(view,[route[0][0],route[0][1],0],0,SR,new Float64Array(3),0,1);
+   node.headingInitialized=false;
+   node.completionReported=false;
+   node.requestRender();
+  },
+  resetRoute(){
+   motion.pause();
+   route=defaultRoute;
+   path=new MetricPath(route);
+   motion.path=path;
+   motion.reset();
+   terrainPath=false;
+   node.localOrigin=webgl.toRenderCoordinates(view,[route[0][0],route[0][1],0],0,SR,new Float64Array(3),0,1);
+   node.headingInitialized=false;
+   node.completionReported=false;
+   node.requestRender();
+  },
   async focus(){
    const anchor=new Point({
     x:route[0][0],y:route[0][1],
-    z:(groundElevation??0)+(showCube?35:footClearance+1.5),
+    z:(terrainPath?route[0][2]:(groundElevation??0))+(showCube?35:footClearance+1.5),
     spatialReference:SR
    });
    if(showCube){
@@ -382,7 +410,7 @@ export function createSkeletonNode(view,{modelUrl,onStatus=()=>{}}={}) {
     // Use a real world-space camera offset approximately 12m from the soldier.
     const camera=view.camera.clone();
     camera.position=new Point({
-     x:route[0][0],y:route[0][1]-12,z:(groundElevation??0)+7,
+     x:route[0][0],y:route[0][1]-12,z:(terrainPath?route[0][2]:(groundElevation??0))+7,
      spatialReference:SR
     });
     camera.heading=0;
