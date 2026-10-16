@@ -1,0 +1,435 @@
+import RenderNode from "@arcgis/core/views/3d/webgl/RenderNode.js";
+import Point from "@arcgis/core/geometry/Point.js";
+import * as webgl from "@arcgis/core/views/3d/webgl.js";
+import * as THREE from "three";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+import {CharacterAnimator} from "./character.js";
+import {MetricPath} from "./path.js";
+import {Locomotion} from "./locomotion.js";
+import {activityMetrics} from "./activity.js";
+
+const SR={wkid:3857};
+export function createSkeletonNode(view,{modelUrl,onStatus=()=>{},onActivity=()=>{}}={}) {
+ let route=null;
+ let path=null;
+ let motion=null;
+ let selectedSpeed=1.4;
+ let headingOffsetDeg=180; // Soldier GLB looks backwards relative to its nominal forward axis.
+ const localZ=new THREE.Vector3(0,0,1);
+ let groundElevation=null;
+ let footClearance=0.10; // metres above sampled terrain; adjustable for gait/terrain calibration
+ // Diagnostic mode: keep ArcGIS RenderNode scheduling, skip all Three.js WebGL calls.
+ const params=new URLSearchParams(window.location.search);
+ const disableThree=params.has("noThree");
+ const probe=params.has("probe");
+ const threeProbe=params.has("threeProbe");
+ const geoProbe=params.has("geoProbe");
+ const worldProbe=params.has("worldProbe");
+ const placementProbe=params.has("placementProbe");
+ const cubeOnly=params.has("cubeOnly");
+ const showCube=params.has("showCube");
+ const Node=RenderNode.createSubclass({
+  consumes:{required:["transparent-color"]},
+  produces:"transparent-color",
+  initialize() {
+   this.screenScene=new THREE.Scene();
+   this.screenCamera=new THREE.Camera();
+   this.screenCamera.projectionMatrix.identity();
+   this.screenCamera.matrixWorld.identity();
+   this.screenCamera.matrixWorldInverse.identity();
+   this.screenScene.add(new THREE.Mesh(
+    new THREE.PlaneGeometry(0.55,0.55),
+    new THREE.MeshBasicMaterial({color:0x00ffff,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
+   ));
+   this.geoScreenScene=new THREE.Scene();
+   this.geoScreenMarker=new THREE.Mesh(
+    new THREE.PlaneGeometry(0.055,0.055),
+    new THREE.MeshBasicMaterial({color:0xffff00,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
+   );
+   this.geoScreenScene.add(this.geoScreenMarker);
+   // A camera-relative mesh tests world geometry with the ArcGIS camera,
+   // without geographical placement or GLB animation.
+   this.worldProbeScene=new THREE.Scene();
+   this.worldProbeMesh=new THREE.Mesh(
+    new THREE.BoxGeometry(24,24,24),
+    new THREE.MeshBasicMaterial({color:0x00ff00,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
+   );
+   this.worldProbeMesh.frustumCulled=false;
+   this.worldProbeScene.add(this.worldProbeMesh);
+   this.placementProbeMesh=new THREE.Mesh(new THREE.BoxGeometry(18,18,18),new THREE.MeshBasicMaterial({color:0x0066ff,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
+   this.placementProbeMesh.frustumCulled=false;
+   this.placementProbeScene=new THREE.Scene();
+   this.placementProbeScene.add(this.placementProbeMesh);
+   this.scene3=new THREE.Scene();
+   this.camera3=new THREE.Camera();
+   // Esri provides the camera world/view matrices directly. Prevent Three.js
+   // from rebuilding matrixWorld from the default zero position each frame.
+   this.camera3.matrixAutoUpdate=false;
+   this.camera3.matrixWorldAutoUpdate=false;
+   this.root=new THREE.Group();
+   // Use ordinary Three.js translation for the geographic anchor.
+   // The previous raw ArcGIS ENU matrix made the debug cube disappear.
+   this.scene3.add(this.root);
+   this.scene3.add(new THREE.HemisphereLight(0xffffff,0x555577,2));
+   const lamp=new THREE.DirectionalLight(0xffffff,2);
+   lamp.position.set(25,15,45);
+   this.scene3.add(lamp);
+   this.marker=new THREE.Mesh(new THREE.CapsuleGeometry(0.5,1.5,8,12),new THREE.MeshNormalMaterial());
+   this.marker.position.z=1.25;
+   if(!cubeOnly)this.root.add(this.marker);
+   // Independent of glTF loading: if this pink box is invisible while the orange
+   // ArcGIS sphere is visible, investigate WebGL target and camera matrices.
+   this.debugCube=new THREE.Mesh(
+    new THREE.BoxGeometry(18,18,18).toNonIndexed(),
+    new THREE.MeshBasicMaterial({color:0xff00ff,depthTest:false,depthWrite:false,side:THREE.DoubleSide})
+   );
+   this.debugCube.position.z=0;
+   this.debugCube.renderOrder=999;
+   this.debugCube.frustumCulled=false;
+   // Keep debug mesh independent of the GLB hierarchy, as in the working blue probe.
+   this.debugCube.visible=showCube;
+   this.scene3.add(this.debugCube);
+   this.localOrigin=new Float64Array(3);
+   this.root.visible=false;
+   this.lastTime=performance.now();
+   this.lastStatusTime=0;
+   this.animator=null;
+   if(modelUrl && !cubeOnly)this.loadCharacter(modelUrl,onStatus);
+   if(cubeOnly)onStatus("Cube-only mode: Soldier is not loaded.");
+   onStatus("RenderNode initialized: diagnostic capsule, not yet animated marine.");
+  },
+  async loadCharacter(url,report) {
+   try {
+    const gltf=await new GLTFLoader().loadAsync(url);
+    if(this.disposed)return;
+    this.root.remove(this.marker);
+    // Keep the GLB's own animation hierarchy intact. A separate wrapper adjusts
+    // model size and foot placement independently of movement along the route.
+    this.characterHolder=new THREE.Group();
+    this.root.add(this.characterHolder);
+    this.characterHolder.add(gltf.scene);
+    this.animator=new CharacterAnimator(gltf.scene,gltf.animations,{forward:[0,0,1],up:[0,1,0]});
+    gltf.scene.updateMatrixWorld(true);
+    const bounds=new THREE.Box3().setFromObject(gltf.scene);
+    const modelSize=bounds.getSize(new THREE.Vector3());
+    if(!Number.isFinite(modelSize.z)||modelSize.z<=0)throw new Error("Soldier bounds have invalid height");
+    const scale=2.5/modelSize.z; // Display as a human-sized 2.5-metre reference.
+    this.characterHolder.scale.setScalar(scale);
+    gltf.scene.position.z-=bounds.min.z;
+    this.characterHolder.updateMatrixWorld(true);
+    this.characterLoaded=true;
+    const clipNames=gltf.animations.map(a=>a.name);
+    console.info("[Skeleton] Soldier bounds",bounds.min.toArray(),bounds.max.toArray(),
+      "scale",scale,"clips",clipNames);
+    report("Soldier ready: height "+(modelSize.z*scale).toFixed(2)+" m; scale "+scale.toFixed(3)+"; clips: "+(clipNames.join(", ")||"none"));
+    this.requestRender();
+   } catch(error) {
+    report("Character load error: "+error.message);
+   }
+  },
+  render() {
+   if(disableThree){
+    if(!this.reportedNoThree){this.reportedNoThree=true;onStatus("Diagnostic: RenderNode active, no WebGL operations (?noThree).");}
+    const now=performance.now();
+    const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
+    this.lastTime=now;
+    motion?.update(dt);
+    if(motion?.running)this.requestRender();
+    return;
+   }
+   this.resetWebGLState();
+   const output=this.bindRenderTarget();
+   const gl=this.gl;
+   if(probe){
+    // ArcGIS native FBO test: no Three.js and no model/matrix dependency.
+    const vp=this.camera.viewport;
+    if(vp[2]>0 && vp[3]>0){
+     const size=Math.max(32,Math.min(128,Math.floor(Math.min(vp[2],vp[3])/6)));
+     gl.enable(gl.SCISSOR_TEST);
+     gl.scissor(vp[0]+Math.floor((vp[2]-size)/2),vp[1]+Math.floor((vp[3]-size)/2),size,size);
+     gl.clearColor(1,0,1,1);
+     gl.colorMask(true,true,true,true);
+     gl.clear(gl.COLOR_BUFFER_BIT);
+     gl.disable(gl.SCISSOR_TEST);
+    }
+    if(!this.loggedProbe){
+     this.loggedProbe=true;
+     onStatus("FBO probe active: magenta square should appear at screen center.");
+     console.info("[Skeleton] RenderNode direct framebuffer probe",vp);
+    }
+    this.resetWebGLState();
+    return output;
+   }
+   if(!this.renderer3) {
+    this.renderer3=new THREE.WebGLRenderer({canvas:gl.canvas,context:gl,antialias:false});
+    this.renderer3.autoClear=false;
+    const original=this.renderer3.setRenderTarget.bind(this.renderer3);
+    this.renderer3.setRenderTarget=(target,...args)=>{
+     original(target,...args);
+     if(target===null)this.bindRenderTarget();
+    };
+   }
+   const now=performance.now();
+   const dt=Math.min(Math.max(0,(now-this.lastTime)/1000),0.1);
+   this.lastTime=now;
+   if(!motion){
+    this.root.visible=false;
+    this.debugCube.visible=false;
+    this.resetWebGLState();
+    return output;
+   }
+   this.root.visible=true;
+   this.debugCube.visible=showCube;
+   const pose=motion.update(dt);
+   if(now-(this.lastActivityUpdate||0)>140 || pose.finished){
+    this.lastActivityUpdate=now;
+    onActivity(activityMetrics({path,distance:motion.distance,elapsed:motion.elapsed,metMinutes:motion.metMinutes,speed:motion.running?motion.speed:0}));
+   }
+
+   if(pose.finished && !this.completionReported){
+    this.completionReported=true;
+    onStatus("Route completed. Press Reset to start again.");
+   }
+   if(groundElevation===null){
+    this.resetWebGLState();
+    if(motion.running)this.requestRender();
+    return output;
+   }
+   const raisedPosition=[pose.position[0],pose.position[1],pose.position[2]+(showCube?35:footClearance)];
+   // The direct-position blue probe rendered at this same geographic anchor.
+   // Apply ONLY translation to the root, avoiding the suspect ENU basis matrix.
+   const anchor=webgl.toRenderCoordinates(view,raisedPosition,0,SR,new Float64Array(3),0,1);
+   this.root.position.set(
+    anchor[0]-this.localOrigin[0],
+    anchor[1]-this.localOrigin[1],
+    anchor[2]-this.localOrigin[2]
+   );
+   // Construct a local East/North/Up frame at this geographic position.
+   // In a global ArcGIS SceneView the render-space vertical is not world +Z.
+   // Translation remains via toRenderCoordinates (already browser-validated).
+   const enu=webgl.renderCoordinateTransformAt(view,raisedPosition,SR,new Float64Array(16));
+   const east=new THREE.Vector3(enu[0],enu[1],enu[2]).normalize();
+   const north=new THREE.Vector3(enu[4],enu[5],enu[6]).normalize();
+   const up=new THREE.Vector3(enu[8],enu[9],enu[10]).normalize();
+   const tangent=pose.tangent;
+   const forward=new THREE.Vector3()
+     .addScaledVector(east,tangent[0])
+     .addScaledVector(north,tangent[1]);
+   forward.addScaledVector(up,-forward.dot(up)).normalize();
+   const right=new THREE.Vector3().crossVectors(forward,up).normalize();
+   forward.crossVectors(up,right).normalize();
+   // Three's canonical character basis: +X right, +Y forward, +Z up.
+   const rotationBasis=new THREE.Matrix4().makeBasis(right,forward,up);
+   const headingCorrection=new THREE.Quaternion().setFromAxisAngle(localZ,THREE.MathUtils.degToRad(headingOffsetDeg));
+   const desired=new THREE.Quaternion().setFromRotationMatrix(rotationBasis).multiply(headingCorrection);
+   if(!motion.running || !this.headingInitialized){
+    this.root.quaternion.copy(desired);
+    this.headingInitialized=true;
+   }else this.root.quaternion.slerp(desired,Math.min(1,dt*10));
+   this.root.scale.set(1,1,1);
+   this.root.updateMatrixWorld(true);
+   this.debugCube.position.copy(this.root.getWorldPosition(new THREE.Vector3()));
+   this.debugCube.updateMatrixWorld(true);
+   this.animator?.update(dt,pose.animationScale>0?motion.speed:0);
+   if(motion.running && now-this.lastStatusTime>500){
+    this.lastStatusTime=now;
+    onStatus(`${this.animator?.gait==="run"?"Running":"Walking"}: ${pose.distance.toFixed(1)} / ${path.totalLength.toFixed(0)} m at ${motion.speed.toFixed(1)} m/s, clearance ${footClearance.toFixed(2)} m`);
+   }
+   this.camera3.projectionMatrix.fromArray(this.camera.projectionMatrix);
+   this.camera3.projectionMatrixInverse.copy(this.camera3.projectionMatrix).invert();
+   const viewMatrix=new THREE.Matrix4().fromArray(this.camera.viewMatrix);
+   const origin=new THREE.Matrix4().makeTranslation(...this.localOrigin);
+   this.camera3.matrixWorldInverse.multiplyMatrices(viewMatrix,origin);
+   this.camera3.matrixWorld.copy(this.camera3.matrixWorldInverse).invert();
+   // WebGLRenderer calls camera.updateMatrixWorld() before drawing. With
+   // matrixAutoUpdate disabled, our ArcGIS matrices remain authoritative.
+   // IMPORTANT: Never call renderer.setSize() on the ArcGIS-owned canvas.
+   // Three.js setSize mutates canvas.width/height even with updateStyle=false,
+   // potentially zeroing Esri's framebuffer attachments.
+   // Restore the sequence used by the successful blue placement probe.
+   // Three.js resetState() may alter shared GL bindings: ArcGIS must rebind
+   // its target AFTER the Three.js reset, not before it.
+   this.renderer3.resetState();
+   this.bindRenderTarget();
+   const viewport=gl.getParameter(gl.VIEWPORT);
+   if(placementProbe || cubeOnly){
+    // Identical projected point to the fuchsia box; bypass its geographic parent matrix.
+    this.root.updateMatrixWorld(true);
+    this.debugCube.getWorldPosition(this.placementProbeMesh.position);
+    this.placementProbeMesh.updateMatrixWorld(true);
+    if(cubeOnly)this.placementProbeMesh.material.color.setHex(0xff00ff);
+    this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+    this.renderer3.render(this.placementProbeScene,this.camera3);
+    if(now-(this.lastPlacementProbeStatus||0)>1000){
+     this.lastPlacementProbeStatus=now;
+     const ndc=this.placementProbeMesh.position.clone().project(this.camera3);
+     const position=this.placementProbeMesh.position.toArray();
+     onStatus((cubeOnly?"Magenta cube-only":"Blue placement cube")+": "+ndc.toArray().map(n=>n.toFixed(3)).join(", ")+" | draw calls "+this.renderer3.info.render.calls);
+     console.info("[Skeleton] placementProbe local pos",position,"NDC",ndc.toArray(),"calls",this.renderer3.info.render.calls);
+    }
+    this.resetWebGLState();
+    return output;
+   }
+   if(worldProbe){
+    // Place the test box in front of the actual ArcGIS camera in render space.
+    // Projection + camera matrix are identical to the normal world scene,
+    // but the entire geographic placement path is bypassed.
+    this.worldProbeMesh.position.set(0,0,-100).applyMatrix4(this.camera3.matrixWorld);
+    this.worldProbeMesh.updateMatrixWorld(true);
+    const projected=this.worldProbeMesh.getWorldPosition(new THREE.Vector3()).project(this.camera3);
+    this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+    const before=this.renderer3.info.render.calls;
+    this.renderer3.render(this.worldProbeScene,this.camera3);
+    const draws=this.renderer3.info.render.calls;
+    if(!this.reportedWorldProbe||now-(this.worldProbeStatusTime||0)>1200){
+     this.reportedWorldProbe=true;
+     this.worldProbeStatusTime=now;
+     onStatus("World probe: green cube in front of camera. NDC "+projected.toArray().map(x=>x.toFixed(3)).join(", ")+"; draw calls "+draws);
+     console.info("[Skeleton] worldProbe NDC",projected.toArray(),"draws",draws,"before",before);
+    }
+    this.resetWebGLState();
+    return output;
+   }
+   if(geoProbe){
+    // Project the SAME local-world point through the proposed ArcGIS/Three camera
+    // and visualize the NDC position in screen space. Does not use world geometry.
+    const worldPoint=this.debugCube.getWorldPosition(new THREE.Vector3());
+    const projected=worldPoint.clone().project(this.camera3);
+    if(!this.loggedGeoProjection){
+     this.loggedGeoProjection=true;
+     console.info("[Skeleton] geoProbe projected NDC:",projected.toArray(),
+      "local world point:",worldPoint.toArray(),
+      "camera view:",this.camera.viewMatrix,
+      "projection:",this.camera.projectionMatrix);
+    }
+    if(projected.toArray().every(Number.isFinite)){
+     this.geoScreenMarker.position.set(projected.x,projected.y,0);
+     this.renderer3.render(this.geoScreenScene,this.screenCamera);
+     onStatus("Geo probe: yellow mark = model position projected with ArcGIS camera. NDC "+projected.toArray().map(v=>v.toFixed(2)).join(", "));
+    } else onStatus("Geo probe: camera projection produced non-finite values.");
+    this.resetWebGLState();
+    return output;
+   }
+   this.root.updateMatrixWorld(true);
+   const center3D=this.debugCube.getWorldPosition(new THREE.Vector3());
+   const ndc3D=center3D.clone().project(this.camera3);
+   if(now-(this.lastGeometryReport||0)>750){
+    this.lastGeometryReport=now;
+    const inside=Number.isFinite(ndc3D.x)&&Number.isFinite(ndc3D.y)&&Number.isFinite(ndc3D.z)
+      &&Math.abs(ndc3D.x)<=1&&Math.abs(ndc3D.y)<=1&&Math.abs(ndc3D.z)<=1;
+    onStatus((showCube?"Cube":"Soldier") + " NDC "+ndc3D.toArray().map(v=>v.toFixed(3)).join(", ")
+       +" | "+(inside?"IN frustum":"OUT of frustum")
+       +" | "+(groundElevation===null?"DEM pending":"DEM "+groundElevation.toFixed(1)+"m"));
+   }
+   if(!this.loggedViewport){
+    this.loggedViewport=true;
+    console.info("[Skeleton] viewport",Array.from(viewport),"canvas",gl.canvas.width,gl.canvas.height,"camera",this.camera);
+   }
+   if(viewport[2]>0 && viewport[3]>0){
+    if(!this.reported3DGeometry){
+     this.reported3DGeometry=true;
+     this.root.updateMatrixWorld(true);
+     const center=this.debugCube.getWorldPosition(new THREE.Vector3());
+     const ndc=center.clone().project(this.camera3);
+     const clipMatrix=new THREE.Matrix4().multiplyMatrices(this.camera3.projectionMatrix,this.camera3.matrixWorldInverse);
+     console.info("[Skeleton] world cube center",center.toArray(),"NDC",ndc.toArray(),
+       "root scale",this.root.scale.toArray(),"camera determinant",clipMatrix.determinant(),
+       "frustumCulled",this.debugCube.frustumCulled);
+     onStatus("3D debug cube NDC: "+ndc.toArray().map(n=>n.toFixed(3)).join(", "));
+    }
+    this.renderer3.setViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+    this.renderer3.render(threeProbe?this.screenScene:this.scene3,threeProbe?this.screenCamera:this.camera3);
+    if(!threeProbe && now-(this.lastDrawReport||0)>1500){
+     this.lastDrawReport=now;
+     console.info("[Skeleton] scene draw calls",this.renderer3.info.render.calls,"cube",this.debugCube.position.toArray(), "cube indexed", Boolean(this.debugCube.geometry.index), "gl error", gl.getError());
+    }
+    if(threeProbe&&!this.reportedThreeProbe){this.reportedThreeProbe=true;onStatus("Three.js probe active: cyan rectangle should appear in the viewport.");}
+   } else if(!this.invalidViewportReported){
+    this.invalidViewportReported=true;
+    onStatus("Rendering paused: ArcGIS output viewport is zero-sized.");
+   }
+   this.resetWebGLState();
+   if(motion.running)this.requestRender();
+   return output;
+  },
+  destroy() {
+   this.disposed=true;
+   this.animator?.dispose();
+   this.placementProbeMesh?.geometry.dispose();
+   this.placementProbeMesh?.material.dispose();
+   this.worldProbeMesh?.geometry.dispose();
+   this.worldProbeMesh?.material.dispose();
+   this.debugCube?.geometry.dispose();
+   this.debugCube?.material.dispose();
+   this.marker?.geometry.dispose();
+   this.marker?.material.dispose();
+   this.renderer3?.dispose();
+  }
+ });
+ const node=new Node({view});
+ return {
+  node,
+  setRoute(points){
+   const replacement=new MetricPath(points);
+   if(points.some(p=>p.length<3||!Number.isFinite(p[2])))throw new Error("Route requires valid terrain elevations.");
+   route=replacement.points;
+   path=replacement;
+   motion=new Locomotion(path,{speed:selectedSpeed,clipMetersPerSecond:1.4});
+   groundElevation=route[0][2];
+   node.localOrigin=webgl.toRenderCoordinates(view,[route[0][0],route[0][1],0],0,SR,new Float64Array(3),0,1);
+   node.root.visible=true;
+   node.headingInitialized=false;
+   node.completionReported=false;
+   node.requestRender();
+   onActivity(activityMetrics({path,distance:0,elapsed:0,speed:0}));
+  },
+  clearRoute(){
+   motion?.pause();
+   route=null;
+   path=null;
+   motion=null;
+   groundElevation=null;
+   node.root.visible=false;
+   node.debugCube.visible=false;
+   node.completionReported=false;
+   node.requestRender();
+   onActivity(activityMetrics({path:null}));
+  },
+  async focus(){
+   if(!motion)throw new Error("Draw a route before focusing the Soldier.");
+   const anchor=new Point({
+    x:route[0][0],y:route[0][1],
+    z:route[0][2]+(showCube?35:footClearance+1.5),
+    spatialReference:SR
+   });
+   if(showCube){
+    await view.goTo({target:anchor,scale:850,heading:0,tilt:70},{animate:false});
+   }else{
+    // SceneView scale-based goTo can leave a 2.5m model only a few pixels tall.
+    // Use a real world-space camera offset approximately 12m from the soldier.
+    const camera=view.camera.clone();
+    camera.position=new Point({
+     x:route[0][0],y:route[0][1]-12,z:route[0][2]+7,
+     spatialReference:SR
+    });
+    camera.heading=0;
+    camera.tilt=68;
+    await view.goTo(camera,{animate:false});
+   }
+   node.requestRender();
+   onStatus("Focused on "+(showCube?"debug cube":"Soldier")+"; use mouse wheel for closer inspection.");
+  },
+  start(){if(!motion){onStatus("Draw a route first.");return;}motion.start();node.lastTime=performance.now();onStatus(motion.running?"Start pressed — waiting for render frames…":"Route finished — press Reset");node.requestRender();},pause(){if(!motion)return;motion.pause();onActivity(activityMetrics({path,distance:motion.distance,elapsed:motion.elapsed,metMinutes:motion.metMinutes,speed:0}));onStatus(`Paused at ${motion.distance.toFixed(1)} m`);node.requestRender();},reset(){if(!motion)return;motion.reset();onActivity(activityMetrics({path,distance:0,elapsed:0,speed:0}));node.completionReported=false;onStatus("Reset: ready to start");node.requestRender();},setSpeed(speed){if(Number.isFinite(speed)&&speed>=0){selectedSpeed=speed;if(motion)motion.speed=speed;}node.requestRender();},
+  setFootClearance(meters){
+   if(!Number.isFinite(meters))return;
+   footClearance=Math.max(-0.5,Math.min(1,meters));
+   node.requestRender();
+   onStatus("Foot clearance: "+footClearance.toFixed(2)+" m");
+  },
+  setHeadingOffset(degrees){
+   if(!Number.isFinite(degrees))return;
+   headingOffsetDeg=degrees;
+   node.requestRender();
+   onStatus("Model heading correction: "+degrees+" degrees (local vertical).");
+  }};
+}
